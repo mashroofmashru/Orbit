@@ -59,12 +59,13 @@ export const COUNTRIES = CODES.map((code) => ({ code, name: countryName(code) })
 
 /** Suggestions for the destination field (no external location service is configured). */
 export const POPULAR_DESTINATIONS = [
+  ['Kozhikode', 'IN'], ['Kochi', 'IN'], ['Mumbai', 'IN'], ['New Delhi', 'IN'], ['Bengaluru', 'IN'], ['Goa', 'IN'],
+  ['Chennai', 'IN'], ['Kolkata', 'IN'], ['Hyderabad', 'IN'], ['Jaipur', 'IN'],
   ['Dubai', 'AE'], ['Abu Dhabi', 'AE'], ['London', 'GB'], ['Paris', 'FR'], ['Singapore', 'SG'], ['Bangkok', 'TH'],
   ['Phuket', 'TH'], ['Tokyo', 'JP'], ['Kyoto', 'JP'], ['New York', 'US'], ['San Francisco', 'US'], ['Toronto', 'CA'],
   ['Sydney', 'AU'], ['Melbourne', 'AU'], ['Bali', 'ID'], ['Kuala Lumpur', 'MY'], ['Istanbul', 'TR'], ['Rome', 'IT'],
   ['Barcelona', 'ES'], ['Amsterdam', 'NL'], ['Berlin', 'DE'], ['Zurich', 'CH'], ['Doha', 'QA'], ['Kathmandu', 'NP'],
-  ['Colombo', 'LK'], ['Malé', 'MV'], ['Mumbai', 'IN'], ['New Delhi', 'IN'], ['Bengaluru', 'IN'], ['Goa', 'IN'],
-  ['Chennai', 'IN'], ['Kolkata', 'IN'], ['Hyderabad', 'IN'], ['Jaipur', 'IN'],
+  ['Colombo', 'LK'], ['Malé', 'MV'],
 ].map(([city, country]) => ({ city, country }))
 
 export function guessTimeZone() {
@@ -73,6 +74,26 @@ export function guessTimeZone() {
   } catch {
     return 'UTC'
   }
+}
+
+export function guessUserCountry() {
+  try {
+    const locale = new Intl.Locale(navigator.language)
+    if (locale.region && locale.region.length === 2) return locale.region.toUpperCase()
+  } catch {
+    /* fallback to timezone below */
+  }
+  const tz = guessTimeZone()
+  if (/^Asia\/(Kolkata|Calcutta)/i.test(tz)) return 'IN'
+  if (/^Asia\/Dubai/i.test(tz)) return 'AE'
+  if (/^Europe\/London/i.test(tz)) return 'GB'
+  if (/^America\//i.test(tz)) return 'US'
+  return 'IN'
+}
+
+export function isDomesticRoute(depCountry, destCountry) {
+  if (!depCountry || !destCountry) return false
+  return depCountry.trim().toUpperCase() === destCountry.trim().toUpperCase()
 }
 
 export const TIME_ZONES = (() => {

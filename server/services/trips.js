@@ -35,6 +35,8 @@ const notificationsSchema = z.object({
 
 const tripCreateSchema = z.object({
   name: optionalText(60),
+  departureCity: optionalText(80),
+  departureCountry: countryCode.optional().nullable(),
   destinationCity: text(80, 'Destination city'),
   destinationCountry: countryCode,
   purpose: z.enum(PURPOSES),
@@ -45,6 +47,8 @@ const tripCreateSchema = z.object({
 
 const tripUpdateSchema = z.object({
   name: optionalText(60),
+  departureCity: optionalText(80),
+  departureCountry: countryCode.optional().nullable(),
   departureLocal: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/).optional(),
   departureTz: z.string().refine(isValidTimeZone).optional(),
 })
@@ -78,6 +82,8 @@ export const toTrip = (r) =>
     id: r.id,
     userId: r.user_id,
     name: r.name,
+    departureCity: r.departure_city ?? null,
+    departureCountry: r.departure_country ?? null,
     destinationCity: r.destination_city,
     destinationCountry: r.destination_country,
     purpose: r.purpose,
@@ -224,13 +230,15 @@ export function createTripsService({ db, config, gamification, notifications, pu
     return gamification.withLevelTracking(user.id, (events) =>
       transaction(db, () => {
         db.prepare(
-          `INSERT INTO trips (id, user_id, name, destination_city, destination_country, purpose, departure_local, departure_tz,
+          `INSERT INTO trips (id, user_id, name, departure_city, departure_country, destination_city, destination_country, purpose, departure_local, departure_tz,
              departure_at, checklist_source, ai_model, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           id,
           user.id,
           data.name,
+          data.departureCity ?? null,
+          data.departureCountry ?? null,
           data.destinationCity,
           data.destinationCountry,
           data.purpose,
@@ -277,8 +285,10 @@ export function createTripsService({ db, config, gamification, notifications, pu
     const departureLocal = data.departureLocal ?? trip.departureLocal
     const departureTz = data.departureTz ?? trip.departureTz
     const departureAt = zonedLocalToUtc(departureLocal, departureTz)
-    db.prepare('UPDATE trips SET name = ?, departure_local = ?, departure_tz = ?, departure_at = ?, updated_at = ? WHERE id = ?').run(
+    db.prepare('UPDATE trips SET name = ?, departure_city = ?, departure_country = ?, departure_local = ?, departure_tz = ?, departure_at = ?, updated_at = ? WHERE id = ?').run(
       data.name !== undefined ? data.name : trip.name,
+      data.departureCity !== undefined ? data.departureCity : trip.departureCity,
+      data.departureCountry !== undefined ? data.departureCountry : trip.departureCountry,
       departureLocal,
       departureTz,
       departureAt,

@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
-import { CATEGORIES, IMPORTANCE } from './checklistRules.js'
+import { CATEGORIES, IMPORTANCE, isDomesticTrip } from './checklistRules.js'
 
 const SuggestionSchema = z.object({
   items: z
@@ -23,6 +23,7 @@ Suggest up to 12 ADDITIONAL items that are genuinely useful for this specific de
 
 Rules:
 - Do not repeat items that are already on the existing checklist.
+- For domestic trips (is_domestic is true), do not suggest passports, visas, immigration, international adapters, or foreign currency exchange. Focus on domestic travel essentials.
 - Never state that a visa, permit, vaccination or other entry requirement definitely applies or does not apply. If an item concerns an entry or legal requirement, set is_entry_requirement to true and phrase the title as something to check.
 - Do not include URLs, phone numbers or document numbers.
 - Keep titles under 70 characters and notes under 160 characters, practical and specific.`
@@ -32,6 +33,13 @@ export async function suggestWithAi(config, trip, existingTitles) {
   if (!config.ai.enabled || !config.ai.hasCredentials) return null
   const client = new Anthropic({ timeout: config.ai.timeoutMs, maxRetries: 1 })
   const month = new Date(trip.departureAt).toLocaleString('en-GB', { month: 'long', timeZone: trip.departureTz })
+  const isDomestic = isDomesticTrip({
+    departureCountry: trip.departureCountry,
+    departureCity: trip.departureCity,
+    destinationCountry: trip.destinationCountry,
+    destinationCity: trip.destinationCity,
+    departureTz: trip.departureTz,
+  })
 
   try {
     const response = await client.beta.messages.parse({
@@ -46,8 +54,11 @@ export async function suggestWithAi(config, trip, existingTitles) {
         {
           role: 'user',
           content: JSON.stringify({
+            departure_city: trip.departureCity || undefined,
+            departure_country_code: trip.departureCountry || undefined,
             destination_city: trip.destinationCity,
             destination_country_code: trip.destinationCountry,
+            is_domestic: isDomestic,
             purpose: trip.purpose,
             departure_month: month,
             existing_items: existingTitles,

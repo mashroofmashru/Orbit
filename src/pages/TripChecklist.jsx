@@ -191,9 +191,19 @@ export default function TripChecklist() {
               <p className="text-sm font-bold tracking-wide text-orange-700 uppercase">Did I forget something?</p>
               <h1 className="mt-1 text-4xl font-medium sm:text-5xl">{trip.name || `Trip to ${trip.destinationCity}`}</h1>
               <p className="mt-2 text-lg text-muted">
-                {trip.destinationCity}, {countryName(trip.destinationCountry)} · {purpose?.label}
+                {trip.departureCity ? `${trip.departureCity} → ` : ''}{trip.destinationCity}, {countryName(trip.destinationCountry)} · {purpose?.label}
               </p>
               <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                {trip.departureCountry && trip.destinationCountry && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 font-bold',
+                      trip.departureCountry === trip.destinationCountry ? 'bg-mint-100 text-mint-800' : 'bg-sky-100 text-sky-800',
+                    )}
+                  >
+                    {trip.departureCountry === trip.destinationCountry ? '🛡️ Domestic Trip' : '🌍 International Trip'}
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-cream px-3 py-1.5 font-semibold">
                   <CalendarClock className="size-4 text-orange-700" /> {formatDeparture(trip)} <span className="text-muted">({trip.departureTz.replace(/_/g, ' ')})</span>
                 </span>

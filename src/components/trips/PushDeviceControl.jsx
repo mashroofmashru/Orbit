@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Smartphone } from 'lucide-react'
 import Notice from '../ui/Notice'
-import { api } from '../../services/orbitApi'
 import { disablePush, enablePush, pushStatus, syncPush } from '../../lib/push'
 import { buttonClass } from '../../lib/ui'
 

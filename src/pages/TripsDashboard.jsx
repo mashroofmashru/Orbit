@@ -45,7 +45,9 @@ export function TripCard({ trip, now }) {
                 {trip.name || `Trip to ${trip.destinationCity}`}
               </Link>
             </h3>
-            <p className="text-sm text-muted">{countryName(trip.destinationCountry)}</p>
+            <p className="text-sm text-muted">
+              {trip.departureCity ? `${trip.departureCity} → ` : ''}{trip.destinationCity}, {countryName(trip.destinationCountry)}
+            </p>
           </div>
           <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-bold', st.cls)}>{st.label}</span>
         </div>

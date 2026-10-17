@@ -5,17 +5,17 @@ import { ArrowLeft, ArrowRight, BellRing, Check, Globe2, MapPin, Plane } from 'l
 import Mascot from '../components/mascot/Mascot'
 import Notice from '../components/ui/Notice'
 import PushDeviceControl from '../components/trips/PushDeviceControl'
-import { COUNTRIES, POPULAR_DESTINATIONS, PURPOSES, TIME_ZONES, countryName, guessTimeZone } from '../data/trips'
+import { COUNTRIES, POPULAR_DESTINATIONS, PURPOSES, TIME_ZONES, countryName, guessTimeZone, guessUserCountry } from '../data/trips'
 import { api } from '../services/orbitApi'
 import { buttonClass, cn } from '../lib/ui'
 
 const STEPS = [
-  { id: 'where', label: 'Destination', icon: MapPin },
+  { id: 'where', label: 'Route & Destination', icon: MapPin },
   { id: 'when', label: 'Date & purpose', icon: Plane },
   { id: 'remind', label: 'Reminders', icon: BellRing },
 ]
 // Which step owns each server-side field (for routing validation errors back)
-const FIELD_STEP = { destinationCity: 0, destinationCountry: 0, name: 0, departureLocal: 1, departureTz: 1, purpose: 1 }
+const FIELD_STEP = { departureCity: 0, departureCountry: 0, destinationCity: 0, destinationCountry: 0, name: 0, departureLocal: 1, departureTz: 1, purpose: 1 }
 
 const inputCls =
   'h-12 w-full rounded-xl bg-white px-4 text-[15px] text-navy ring-1 ring-navy/15 placeholder:text-muted/80 focus:ring-2 focus:ring-sky focus:outline-none aria-invalid:ring-2 aria-invalid:ring-danger'
@@ -45,12 +45,23 @@ const today = () => new Date().toISOString().slice(0, 10)
 
 export default function TripSetup() {
   const navigate = useNavigate()
-  const ids = { city: useId(), country: useId(), name: useId(), date: useId(), time: useId(), tz: useId() }
+  const ids = {
+    depCity: useId(),
+    depCountry: useId(),
+    city: useId(),
+    country: useId(),
+    name: useId(),
+    date: useId(),
+    time: useId(),
+    tz: useId(),
+  }
   const [step, setStep] = useState(0)
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState(null)
   const [form, setForm] = useState({
+    departureCity: '',
+    departureCountry: guessUserCountry(),
     destinationCity: '',
     destinationCountry: '',
     name: '',
@@ -96,6 +107,8 @@ export default function TripSetup() {
     try {
       const res = await api.createTrip({
         name: form.name || null,
+        departureCity: form.departureCity?.trim() || null,
+        departureCountry: form.departureCountry || null,
         destinationCity: form.destinationCity.trim(),
         destinationCountry: form.destinationCountry,
         purpose: form.purpose,
@@ -182,62 +195,146 @@ export default function TripSetup() {
               <motion.div key={step} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.2 }} className="space-y-6">
                 {step === 0 && (
                   <>
-                    <Field id={ids.city} label="Destination city" required error={errors.destinationCity}>
-                      <input
-                        id={ids.city}
-                        list={`${ids.city}-list`}
-                        value={form.destinationCity}
-                        onChange={(e) => {
-                          const match = POPULAR_DESTINATIONS.find((d) => d.city.toLowerCase() === e.target.value.toLowerCase())
-                          set({ destinationCity: e.target.value, ...(match && !form.destinationCountry ? { destinationCountry: match.country } : {}) })
-                        }}
-                        placeholder="e.g. Dubai"
-                        autoComplete="off"
-                        maxLength={80}
-                        aria-invalid={Boolean(errors.destinationCity)}
-                        aria-describedby={errors.destinationCity ? `${ids.city}-error` : undefined}
-                        aria-required="true"
-                        className={inputCls}
-                        autoFocus
-                      />
-                      <datalist id={`${ids.city}-list`}>
-                        {POPULAR_DESTINATIONS.map((d) => (
-                          <option key={d.city} value={d.city}>
-                            {countryName(d.country)}
-                          </option>
-                        ))}
-                      </datalist>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="rounded-2xl bg-cream-50 p-4 ring-1 ring-navy/10 space-y-4">
+                      <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-muted">
+                        <MapPin className="size-3.5 text-sky-600" /> Departure Place (Origin)
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field id={ids.depCity} label="Departing from (city)">
+                          <input
+                            id={ids.depCity}
+                            list={`${ids.depCity}-list`}
+                            value={form.departureCity}
+                            onChange={(e) => {
+                              const match = POPULAR_DESTINATIONS.find((d) => d.city.toLowerCase() === e.target.value.toLowerCase())
+                              set({ departureCity: e.target.value, ...(match ? { departureCountry: match.country } : {}) })
+                            }}
+                            placeholder="e.g. Kozhikode or Mumbai"
+                            autoComplete="off"
+                            maxLength={80}
+                            className={inputCls}
+                          />
+                          <datalist id={`${ids.depCity}-list`}>
+                            {POPULAR_DESTINATIONS.map((d) => (
+                              <option key={`dep-${d.city}`} value={d.city}>
+                                {countryName(d.country)}
+                              </option>
+                            ))}
+                          </datalist>
+                        </Field>
+
+                        <Field id={ids.depCountry} label="Departure country">
+                          <select
+                            id={ids.depCountry}
+                            value={form.departureCountry}
+                            onChange={(e) => set({ departureCountry: e.target.value })}
+                            className={cn(inputCls, 'cursor-pointer')}
+                          >
+                            <option value="">Choose departure country…</option>
+                            {COUNTRIES.map((c) => (
+                              <option key={`dep-c-${c.code}`} value={c.code}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-cream-50 p-4 ring-1 ring-navy/10 space-y-4">
+                      <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-muted">
+                        <Plane className="size-3.5 text-orange-600" /> Arrival Place (Destination)
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field id={ids.city} label="Destination city" required error={errors.destinationCity}>
+                          <input
+                            id={ids.city}
+                            list={`${ids.city}-list`}
+                            value={form.destinationCity}
+                            onChange={(e) => {
+                              const match = POPULAR_DESTINATIONS.find((d) => d.city.toLowerCase() === e.target.value.toLowerCase())
+                              set({ destinationCity: e.target.value, ...(match && !form.destinationCountry ? { destinationCountry: match.country } : {}) })
+                            }}
+                            placeholder="e.g. Dubai or Mumbai"
+                            autoComplete="off"
+                            maxLength={80}
+                            aria-invalid={Boolean(errors.destinationCity)}
+                            aria-describedby={errors.destinationCity ? `${ids.city}-error` : undefined}
+                            aria-required="true"
+                            className={inputCls}
+                            autoFocus
+                          />
+                          <datalist id={`${ids.city}-list`}>
+                            {POPULAR_DESTINATIONS.map((d) => (
+                              <option key={d.city} value={d.city}>
+                                {countryName(d.country)}
+                              </option>
+                            ))}
+                          </datalist>
+                        </Field>
+
+                        <Field id={ids.country} label="Destination country" required error={errors.destinationCountry}>
+                          <select
+                            id={ids.country}
+                            value={form.destinationCountry}
+                            onChange={(e) => set({ destinationCountry: e.target.value })}
+                            aria-invalid={Boolean(errors.destinationCountry)}
+                            aria-describedby={errors.destinationCountry ? `${ids.country}-error` : undefined}
+                            aria-required="true"
+                            className={cn(inputCls, 'cursor-pointer')}
+                          >
+                            <option value="">Choose a country…</option>
+                            {COUNTRIES.map((c) => (
+                              <option key={c.code} value={c.code}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 pt-1">
                         {matches.map((d) => (
                           <button
                             key={d.city}
                             type="button"
                             onClick={() => set({ destinationCity: d.city, destinationCountry: d.country })}
-                            className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-full bg-cream px-3 text-sm font-semibold text-navy ring-1 ring-navy/8 hover:ring-sky sm:min-h-9"
+                            className="inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-full bg-white px-3 text-sm font-semibold text-navy ring-1 ring-navy/10 hover:ring-sky sm:min-h-9"
                           >
                             <MapPin className="size-3.5 text-sky-600" /> {d.city}
                           </button>
                         ))}
                       </div>
-                    </Field>
-                    <Field id={ids.country} label="Country" required error={errors.destinationCountry}>
-                      <select
-                        id={ids.country}
-                        value={form.destinationCountry}
-                        onChange={(e) => set({ destinationCountry: e.target.value })}
-                        aria-invalid={Boolean(errors.destinationCountry)}
-                        aria-describedby={errors.destinationCountry ? `${ids.country}-error` : undefined}
-                        aria-required="true"
-                        className={cn(inputCls, 'cursor-pointer')}
+                    </div>
+
+                    {form.destinationCountry && form.departureCountry && (
+                      <div
+                        className={cn(
+                          'flex items-center gap-3 rounded-2xl p-4 text-sm font-medium transition-colors',
+                          form.departureCountry === form.destinationCountry
+                            ? 'bg-mint-50/80 text-mint-900 ring-1 ring-mint-300'
+                            : 'bg-sky-50/80 text-sky-900 ring-1 ring-sky-200',
+                        )}
                       >
-                        <option value="">Choose a country…</option>
-                        {COUNTRIES.map((c) => (
-                          <option key={c.code} value={c.code}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
+                        <div className="text-2xl">
+                          {form.departureCountry === form.destinationCountry ? '🛡️' : '🌍'}
+                        </div>
+                        <div>
+                          <div className="font-bold flex items-center gap-2">
+                            <span>{form.departureCountry === form.destinationCountry ? 'Domestic trip detected' : 'International trip detected'}</span>
+                            <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', form.departureCountry === form.destinationCountry ? 'bg-mint-200/80 text-mint-800' : 'bg-sky-200/80 text-sky-800')}>
+                              {form.departureCountry === form.destinationCountry ? 'No passport / visa needed' : 'Passport & entry checks required'}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-xs opacity-90">
+                            {form.departureCountry === form.destinationCountry
+                              ? 'Travelling within the same country: Checklist will ask for government-issued photo ID (driver’s license, Aadhaar, etc.). Passports and visas are excluded.'
+                              : 'Travelling cross-border: Checklist will include 6-month passport validity checks and official visa entry requirements.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     <Field id={ids.name} label="Trip name" hint="Shown on your dashboard, e.g. “Sara’s wedding in Dubai”.">
                       <input id={ids.name} value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={60} placeholder="Give your trip a name" className={inputCls} />
                     </Field>

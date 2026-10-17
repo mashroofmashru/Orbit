@@ -65,6 +65,34 @@ describe('checklist generation', () => {
       assert.equal(item.requirementStatus, 'unverified')
     }
   })
+
+  test('domestic trip: passport and visa are not included; government-issued photo ID is required', async () => {
+    const a = await ctx.client().login()
+    const r = await a.post(
+      '/api/trips',
+      tripInput({
+        departureCity: 'Kozhikode',
+        departureCountry: 'IN',
+        destinationCity: 'Mumbai',
+        destinationCountry: 'IN',
+      }),
+    )
+    assert.equal(r.status, 201)
+    assert.equal(r.body.trip.departureCity, 'Kozhikode')
+    assert.equal(r.body.trip.departureCountry, 'IN')
+    assert.equal(r.body.trip.destinationCity, 'Mumbai')
+    assert.equal(r.body.trip.destinationCountry, 'IN')
+
+    // Passport and visa should NOT be present on a domestic trip
+    assert.equal(r.body.items.some((i) => i.title === 'Passport'), false)
+    assert.equal(r.body.items.some((i) => i.title.startsWith('Visa')), false)
+
+    // Government-issued photo ID should be present
+    const photoId = r.body.items.find((i) => i.title === 'Government-issued photo ID')
+    assert.ok(photoId, 'Government-issued photo ID should be included')
+    assert.equal(photoId.importance, 'critical')
+    assert.equal(photoId.applicable, true)
+  })
 })
 
 describe('XP, bonuses and achievements', () => {
