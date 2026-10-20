@@ -59,10 +59,9 @@ export function loadConfig(overrides = {}) {
     secureCookies: env.NODE_ENV === 'production',
     ai: {
       enabled: env.ORBIT_AI_ENABLED !== 'false',
-      // The SDK also resolves ANTHROPIC_AUTH_TOKEN / `ant auth login` profiles; we only gate on an explicit opt-in key here
-      hasCredentials: Boolean(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN),
-      model: env.ORBIT_AI_MODEL || 'claude-opus-5-5',
-      effort: env.ORBIT_AI_EFFORT || 'medium',
+      apiKey: env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.GOOGLE_GENAI_API_KEY || '',
+      hasCredentials: Boolean(env.GEMINI_API_KEY || env.GOOGLE_API_KEY || env.GOOGLE_GENAI_API_KEY),
+      model: env.ORBIT_AI_MODEL || 'gemini-2.5-flash',
       timeoutMs: Number(env.ORBIT_AI_TIMEOUT_MS || 60000),
     },
     // Web push for trip reminders. The VAPID subject must be a mailto: or https: URL.

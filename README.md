@@ -41,7 +41,7 @@ It brings two experiences together in one app:
 - **Three-step trip setup** (`/trips/new`): destination, then date and purpose, then reminders.
 - **Personalised checklist:** generated on the server from built-in travel rules.
   - The rules are tailored to the trip's purpose: business, study, work, medical and so on.
-  - With an Anthropic API key, Claude adds up to 12 suggestions specific to the destination and purpose.
+  - With a Gemini API key, Gemini adds up to 12 suggestions specific to the destination and purpose.
   - AI output is treated as untrusted: links are stripped, duplicates are removed, and requirements stay unverified.
 - **Animated checklist** (`/trips/:id`): check items off, add your own, edit, reorder, mark items "not needed", and confirm entry requirements against official sources.
 - **Progress ring and requirement status:** shown separately, so a 100% checklist is never presented as "legally ready".
@@ -66,7 +66,7 @@ It brings two experiences together in one app:
 | Layer | Technology |
 |---|---|
 | Frontend | React 19, Vite 8, Tailwind CSS 4, React Router 8, Zustand (state), Motion (animation), Leaflet / React Leaflet (maps), lucide-react (icons), axios |
-| Backend | Node.js 22.13+, Express 5, built-in `node:sqlite` (SQLite), Zod validation, `web-push` (VAPID), Anthropic SDK (optional AI) |
+| Backend | Node.js 22.13+, Express 5, built-in `node:sqlite` (SQLite), Zod validation, `web-push` (VAPID), Google GenAI SDK (optional AI) |
 | Data sources | OpenStreetMap via the Overpass API (live places), Nominatim (place search, on submit only), ORBIT's curated Kerala data |
 | Tests | `node:test` (backend) and ESLint |
 
@@ -244,9 +244,8 @@ See `.env.example`. Nothing is required for local development.
 | `VAPID_SUBJECT` | `APP_BASE_URL` if https | Contact for push services: `mailto:…` or an https URL |
 | `REMINDER_OFFSETS_HOURS` | `24,3` | When reminders are sent, in hours before departure |
 | `UPDATE_BATCH_SECONDS` | `120` | Batching window for checklist-update notifications |
-| `ANTHROPIC_API_KEY` | — | Enables AI checklist suggestions |
-| `ORBIT_AI_MODEL` | `claude-opus-5-5` | Model used for suggestions |
-| `ORBIT_AI_EFFORT` | `medium` | Effort level for suggestions |
+| `GEMINI_API_KEY` | — | Enables AI checklist suggestions (Google Gemini) |
+| `ORBIT_AI_MODEL` | `gemini-2.5-flash` | Model used for suggestions |
 | `ORBIT_AI_ENABLED` | `true` | Set `false` to always use rule-based checklists |
 | `ORBIT_SCORING_JSON` | — | Override the server-side reward values and limits |
 
