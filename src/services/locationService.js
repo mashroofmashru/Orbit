@@ -15,6 +15,13 @@ export function nearestDistrict(coords) {
 }
 
 export function describeCurrentLocation(coords) {
+  if (coords?.label) {
+    return { label: coords.label, district: coords.city || null }
+  }
+  if (coords?.city) {
+    const locName = coords.region && coords.region !== coords.city ? `${coords.city}, ${coords.region}` : coords.city
+    return { label: `Current location · near ${locName}`, district: coords.city }
+  }
   const near = nearestDistrict(coords)
   if (!near) {
     return {

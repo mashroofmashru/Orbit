@@ -6,9 +6,9 @@ import Chip from '../ui/Chip'
 import Notice from '../ui/Notice'
 import { BUDGET_OPTIONS, BUFFER_OPTIONS, DURATION_OPTIONS, INTERESTS, LIMITS, MOODS } from '../../data/options'
 import { HUBS } from '../../data/adventures'
-import { haversineKm, minutesUntil, resolveStart } from '../../lib/planner'
+import { minutesUntil, resolveStart } from '../../lib/planner'
 import { formatClock, formatMinutes } from '../../lib/format'
-import { nearestDistrict, searchLocal } from '../../services/locationService'
+import { describeCurrentLocation, searchLocal } from '../../services/locationService'
 import { useGeolocation } from '../../hooks/useGeolocation'
 import { useNow } from '../../hooks/useNow'
 import { useOrbitStore } from '../../store/useOrbitStore'
@@ -198,14 +198,7 @@ export function LocationField({ compact = false, error }) {
   async function useCurrentLocation() {
     const coords = await geo.request()
     if (!coords) return
-    const district = nearestDistrict(coords)
-    const nearestHub = HUBS.map((h) => ({ h, km: haversineKm(coords, h.coords) })).sort((a, b) => a.km - b.km)[0]
-    let label = 'Current location'
-    if (district?.name) {
-      label = `Current location · near ${district.name}`
-    } else if (nearestHub && nearestHub.km <= 25) {
-      label = `Current location · near ${nearestHub.h.name}`
-    }
+    const { label } = describeCurrentLocation(coords)
     update({ location: { label, coords, source: 'geo' } })
   }
 
