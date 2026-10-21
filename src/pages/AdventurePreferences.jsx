@@ -1,12 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion } from 'motion/react'
-import { ArrowRight, CalendarClock, Clock, Heart, MapPin, RotateCcw, ShieldCheck, Smile, Wallet } from 'lucide-react'
+import { ArrowRight, CalendarClock, Heart, MapPin, RotateCcw, ShieldCheck, Smile, Wallet } from 'lucide-react'
 import {
   BudgetPicker,
   BufferPicker,
   DeadlineField,
-  DurationPicker,
   InterestPicker,
   MoodPicker,
   LocationField,
@@ -15,7 +14,7 @@ import Notice from '../components/ui/Notice'
 import { useOrbitStore } from '../store/useOrbitStore'
 import { MOOD_MAP } from '../data/options'
 import { useNow } from '../hooks/useNow'
-import { computeWindow, getBudget, resolveStart, validateBudget, validateDuration } from '../lib/planner'
+import { computeWindow, getBudget, resolveStart, validateBudget } from '../lib/planner'
 import { searchLocal } from '../services/locationService'
 import { formatClock, formatINR, formatMinutes } from '../lib/format'
 import PageHero from '../components/ui/PageHero'
@@ -60,16 +59,25 @@ export default function AdventurePreferences() {
   const [submitted, setSubmitted] = useState(false)
   const now = useNow(30000)
 
+  // Default return time to 60 minutes from now if unset so remaining time is calculated immediately
+  useEffect(() => {
+    if (!prefs.deadline) {
+      const d = new Date(Date.now() + 60 * 60000)
+      const hh = String(d.getHours()).padStart(2, '0')
+      const mm = String(d.getMinutes()).padStart(2, '0')
+      updatePreferences({ deadline: `${hh}:${mm}` })
+    }
+  }, [prefs.deadline, updatePreferences])
+
   const win = useMemo(() => computeWindow(prefs, new Date(now)), [prefs, now])
   const budget = getBudget(prefs)
   const windowError = (field) => win.errors.find((e) => e.field === field)?.text ?? null
 
   function validate() {
     return {
-      duration: validateDuration(prefs),
+      deadline: !prefs.deadline ? 'Choose the time you need to be back.' : (windowError('deadline') || windowError('window')),
       budget: validateBudget(prefs),
-      location: prefs.location.label.trim() || prefs.location.coords ? null : 'Enter a starting location or use your current location.',
-      deadline: windowError('deadline'),
+      location: prefs.location?.label?.trim() || prefs.location?.coords ? null : 'Enter a starting location or use your current location.',
       window: windowError('window'),
     }
   }
@@ -83,7 +91,7 @@ export default function AdventurePreferences() {
     setSubmitted(true)
     const first = Object.entries(next).find(([, v]) => v)
     if (first) {
-      const target = { duration: 'time', budget: 'budget', location: 'location', deadline: 'deadline', window: 'buffer' }[first[0]]
+      const target = { deadline: 'deadline', budget: 'budget', location: 'location', window: 'buffer' }[first[0]]
       const section = document.getElementById(target)
       section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       // Move keyboard focus to the first invalid field once its error has rendered
@@ -94,7 +102,7 @@ export default function AdventurePreferences() {
     }
     if (!prefs.location.coords && prefs.location.label) {
       const resolved = resolveStart(prefs.location)
-      let coords = resolved.coords
+      let coords = resolved?.coords
       if (!coords) {
         const match = searchLocal(prefs.location.label)[0]
         if (match?.coords) coords = match.coords
@@ -120,8 +128,23 @@ export default function AdventurePreferences() {
 
       <form onSubmit={submit} noValidate className="mt-10 grid gap-8 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
-          <Section id="time" letter="A" icon={Clock} title="How much time do you have?" hint="Your total free time, including getting there and back.">
-            <DurationPicker error={shownErrors.duration} />
+          <Section
+            id="deadline"
+            letter="A"
+            icon={CalendarClock}
+            title="When do you need to be back?"
+            hint="Add your departure or check-in time and we’ll make sure your plan ends before it."
+          >
+            <DeadlineField error={shownErrors.deadline} />
+            {prefs.deadline && !shownErrors.deadline && (
+              <div className="mt-3 space-y-2">
+                {win.notices.filter((n) => n.field === 'deadline').map((n) => (
+                  <Notice key={n.text} tone={n.tone}>
+                    {n.text}
+                  </Notice>
+                ))}
+              </div>
+            )}
           </Section>
 
           <Section id="budget" letter="B" icon={Wallet} title="What’s your budget?" hint="Includes entry, food and any auto/taxi fare there and back.">
@@ -155,28 +178,8 @@ export default function AdventurePreferences() {
           </Section>
 
           <Section
-            id="deadline"
-            letter="F"
-            icon={CalendarClock}
-            title="When do you need to be back?"
-            hint="Add your departure or check-in time and we’ll make sure your plan ends before it."
-            optional
-          >
-            <DeadlineField error={shownErrors.deadline} />
-            {prefs.deadline && !shownErrors.deadline && (
-              <div className="mt-3 space-y-2">
-                {win.notices.filter((n) => n.field === 'deadline').map((n) => (
-                  <Notice key={n.text} tone={n.tone}>
-                    {n.text}
-                  </Notice>
-                ))}
-              </div>
-            )}
-          </Section>
-
-          <Section
             id="buffer"
-            letter="G"
+            letter="F"
             icon={ShieldCheck}
             title="Safety buffer"
             hint="Time we keep in reserve for getting back to your starting point and handling small delays — queues, crowds or a slow lift."
@@ -206,7 +209,7 @@ export default function AdventurePreferences() {
               <p className="mt-1 text-sm text-cream/70">for travel and exploring</p>
 
               <dl className="mt-6 space-y-3 border-t border-white/10 pt-5 text-sm">
-                <Row label="Available time" value={Number.isFinite(win.windowMinutes) && win.windowMinutes > 0 ? formatMinutes(win.windowMinutes) : '—'} />
+                <Row label="Remaining time" value={Number.isFinite(win.windowMinutes) && win.windowMinutes > 0 ? formatMinutes(win.windowMinutes) : '—'} />
                 <Row label="Safety buffer" value={`− ${win.buffer} min`} />
                 <Row label="Budget" value={Number.isFinite(budget) ? (budget === 0 ? 'Free only' : `Up to ${formatINR(budget)}`) : '—'} />
                 <Row label="Mood" value={moodSummary(prefs.moods)} />

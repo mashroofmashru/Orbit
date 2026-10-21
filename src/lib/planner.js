@@ -2,6 +2,7 @@ import { HUBS } from '../data/adventures'
 import { WORLD_DESTINATIONS } from '../data/destinations'
 import { haversineKm } from '../utils/distanceUtils'
 import { BUDGET_OPTIONS, LIMITS } from '../data/options'
+import { formatMinutes } from './format'
 
 // ── Assumptions used by the demo planner ────────────────────────────────────
 const ROUTE_FACTOR = 1.3 // straight-line → street distance
@@ -36,10 +37,11 @@ export function getBudget(prefs) {
 }
 
 export function validateDuration(prefs) {
+  if (prefs?.deadline) return null
   const d = getSelectedDuration(prefs)
-  if (prefs.durationOption === 'custom' && String(prefs.customDuration).trim() === '')
+  if (prefs?.durationOption === 'custom' && String(prefs.customDuration).trim() === '')
     return 'Enter how many minutes you have.'
-  const raw = prefs.durationOption === 'custom' ? Number(prefs.customDuration) : d
+  const raw = prefs?.durationOption === 'custom' ? Number(prefs.customDuration) : d
   if (!Number.isInteger(raw)) return 'Enter a whole number of minutes.'
   if (d < LIMITS.minDuration) return `Enter at least ${LIMITS.minDuration} minutes.`
   if (d > LIMITS.maxDuration) return `ORBIT plans short breaks — enter ${LIMITS.maxDuration} minutes or less.`
@@ -72,44 +74,32 @@ export function minutesUntil(deadline, now = new Date()) {
 }
 
 /**
- * Works out the real time window: the selected duration, optionally capped by a
- * return deadline, minus the safety buffer.
+ * Works out the real time window: calculated from the return deadline (current time to entered time),
+ * minus the safety buffer.
  */
 export function computeWindow(prefs, now = new Date()) {
   const notices = []
   const errors = []
-  const selected = getSelectedDuration(prefs)
-  let buffer = Number(prefs.buffer) || 0
-  const durationError = validateDuration(prefs)
-  if (durationError) errors.push({ field: 'duration', text: durationError })
-
-  let windowMinutes = Number.isFinite(selected) ? selected : 0
+  let buffer = Number(prefs?.buffer) || 0
   let deadlineAt = null
-  const until = minutesUntil(prefs.deadline, now)
+  let windowMinutes
+
+  const until = minutesUntil(prefs?.deadline, now)
 
   if (until) {
     deadlineAt = until.target
     if (until.rolled && until.minutes > 12 * 60) {
       errors.push({ field: 'deadline', text: 'That return time has already passed today. Choose a time later than now.' })
     } else if (until.rolled) {
-      notices.push({ field: 'deadline', tone: 'info', text: `Return time is tomorrow — ${formatHM(until.minutes)} from now.` })
+      notices.push({ field: 'deadline', tone: 'info', text: `Return time is tomorrow — ${formatMinutes(until.minutes)} from now.` })
     }
-    if (!durationError && !(until.rolled && until.minutes > 12 * 60)) {
-      if (until.minutes < selected) {
-        notices.push({
-          field: 'deadline',
-          tone: 'warning',
-          text: `Your return time is only ${formatHM(until.minutes)} away, which is less than the ${selected} min you selected. We'll plan around your return time.`,
-        })
-        windowMinutes = until.minutes
-      } else if (until.minutes > selected) {
-        notices.push({
-          field: 'deadline',
-          tone: 'info',
-          text: `Your return time is ${formatHM(until.minutes)} away. We'll plan for your selected ${selected} min so you're back early.`,
-        })
-      }
-    }
+    // Calculate remaining time directly from current time to entered return time
+    windowMinutes = Math.max(0, until.minutes)
+  } else {
+    const durationError = validateDuration(prefs)
+    if (durationError) errors.push({ field: 'duration', text: durationError })
+    const selected = getSelectedDuration(prefs || {})
+    windowMinutes = Number.isFinite(selected) && selected > 0 ? selected : 60
   }
 
   // Very short windows: trim the buffer so a quick adventure is still possible (and say so)
@@ -126,11 +116,11 @@ export function computeWindow(prefs, now = new Date()) {
   if (!errors.length && usableMinutes < MIN_USABLE) {
     errors.push({
       field: 'window',
-      text: `After your ${buffer}-min safety buffer, only ${Math.max(0, usableMinutes)} min would be left. Allow more time or choose a smaller buffer.`,
+      text: `After your ${buffer}-min safety buffer, only ${Math.max(0, usableMinutes)} min would be left. Choose a later return time or a smaller buffer.`,
     })
   }
 
-  return { selected, windowMinutes, buffer, usableMinutes, deadlineAt, notices, errors }
+  return { selected: windowMinutes, windowMinutes, buffer, usableMinutes, deadlineAt, notices, errors }
 }
 
 // ── Location ────────────────────────────────────────────────────────────────
@@ -279,11 +269,4 @@ export function safetyFromActive(active) {
     activityMinutes,
     spareMinutes: usable - activityMinutes,
   })
-}
-
-function formatHM(mins) {
-  if (mins < 60) return `${mins} min`
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return m ? `${h} hr ${m} min` : `${h} hr`
 }
