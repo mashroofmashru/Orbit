@@ -3,18 +3,21 @@ import { haversineKm, withinRadius } from '../utils/distanceUtils'
 import { nearestDistrict } from './locationService'
 import { getCachedPlaces, getCachedQuery, setCachedQuery } from './placeCache'
 
-// Live nearby places from OpenStreetMap via the public Overpass API (CORS-enabled, no key).
+// Live nearby places from OpenStreetMap via ORBIT proxy or public Overpass mirrors.
 // Used responsibly: results cached 24h, one request at a time, a cooldown between requests,
 // a capped radius, and a fallback to the curated list when the service is busy or unreachable.
-const ENDPOINTS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter']
+const ENDPOINTS = [
+  '/api/places/osm',
+  'https://lz4.overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+]
 const MAX_LIVE_RADIUS_KM = 25 // Overpass "around" queries get heavy beyond this
 const FOOD_RADIUS_KM = 3 // cafés/restaurants only very close by, or a city returns thousands
-const COOLDOWN_MS = 5000
-const TIMEOUT_MS = 12000
-const AREA_TIMEOUT_MS = 30000 // a whole-area query returns several hundred places
+const COOLDOWN_MS = 3000
+const TIMEOUT_MS = 16000
 
-// Kozhikode taluk boundary in OpenStreetMap (relation 10122328): the city and its surroundings
-const KOZHIKODE_AREA_ID = 3600000000 + 10122328
 export const KOZHIKODE_CENTRE = { label: 'Kozhikode city centre', coords: [11.2588, 75.7804] }
 
 const TOURIST_SELECTORS = [
@@ -36,23 +39,12 @@ function buildQuery([lat, lon], radiusKm) {
   const a = (rad) => `(around:${rad},${lat},${lon})`
   return `[out:json][timeout:20];
 (
-${TOURIST_SELECTORS.map((s) => `  nwr${a(r)}${s}["name"];`).join('\n')}
-  nwr${a(r)}["amenity"="marketplace"]["name"];
-  nwr${a(f)}["amenity"~"^(cafe|restaurant)$"]["name"];
-  nwr${a(f)}["shop"="mall"]["name"];
+${TOURIST_SELECTORS.map((s) => `  nw${a(r)}${s}["name"];`).join('\n')}
+  nw${a(r)}["amenity"="marketplace"]["name"];
+  nw${a(f)}["amenity"~"^(cafe|restaurant)$"]["name"];
+  nw${a(f)}["shop"="mall"]["name"];
 );
 out center tags 120;`
-}
-
-/** Every named tourist spot and food place inside an OSM area (no result cap). */
-function buildAreaQuery(areaId) {
-  return `[out:json][timeout:60];
-area(id:${areaId})->.a;
-(
-${TOURIST_SELECTORS.map((s) => `  nwr(area.a)${s}["name"];`).join('\n')}
-  nwr(area.a)["amenity"~"^(cafe|restaurant|fast_food|ice_cream|marketplace)$"]["name"];
-);
-out center tags;`
 }
 
 // OSM tags → ORBIT category / interests / Explore groups / typical visit (estimates, labelled as such)
@@ -83,7 +75,7 @@ function toPlace(el) {
   return {
     id: `osm-${el.type}-${el.id}`,
     name,
-    district: nearestDistrict(coords)?.name ?? 'Kerala',
+    district: nearestDistrict(coords)?.name ?? 'Nearby',
     coords,
     category: c.category,
     kind: c.kind,
@@ -125,10 +117,13 @@ async function postQuery(endpoint, query, signal, timeoutMs) {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   signal?.addEventListener('abort', () => ctrl.abort())
   try {
+    const isLocalProxy = endpoint.startsWith('/api')
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: `data=${encodeURIComponent(query)}`,
+      headers: isLocalProxy
+        ? { 'Content-Type': 'application/json', 'X-Orbit-Client': '1' }
+        : { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: isLocalProxy ? JSON.stringify({ query }) : `data=${encodeURIComponent(query)}`,
       signal: ctrl.signal,
     })
     if (res.status === 429) throw Object.assign(new Error('busy'), { code: 'busy' })
@@ -179,13 +174,16 @@ export async function fetchNearbyPlaces({ coords, radiusKm }, { signal } = {}) {
   const cached = getCachedQuery(key)
   if (cached) return finish(getCachedPlaces(cached.ids), 'cache', 'Live OpenStreetMap results (cached within the last 24 hours).')
 
+  const district = nearestDistrict(coords)?.name
+  const label = district ? `curated ${district} places` : 'curated list'
+
   try {
     const live = await runQuery(buildQuery(coords, liveRadius), { signal })
     setCachedQuery(key, live)
     return finish(live, 'live', 'Live results from OpenStreetMap.')
   } catch (err) {
     if (signal?.aborted) throw err
-    return finish([], 'fallback', `${failureReason(err)} Showing ORBIT’s curated list only.`)
+    return finish([], 'fallback', `${failureReason(err)} Showing ORBIT’s ${label} only.`)
   }
 }
 
@@ -194,17 +192,5 @@ export async function fetchNearbyPlaces({ coords, radiusKm }, { signal } = {}) {
  * merged with ORBIT's curated Kozhikode places. Same { places, mode, note } shape; never throws for network problems.
  */
 export async function fetchKozhikodePlaces({ signal } = {}) {
-  const curated = KERALA_PLACES.filter((p) => p.district === 'Kozhikode').map((p) => ({ ...p }))
-  const key = `area:${KOZHIKODE_AREA_ID}`
-  const cached = getCachedQuery(key)
-  if (cached) return { places: dedupe(curated, getCachedPlaces(cached.ids)), mode: 'cache', note: 'Live OpenStreetMap results (cached within the last 24 hours).' }
-
-  try {
-    const live = await runQuery(buildAreaQuery(KOZHIKODE_AREA_ID), { signal, timeoutMs: AREA_TIMEOUT_MS })
-    setCachedQuery(key, live)
-    return { places: dedupe(curated, live), mode: 'live', note: 'Live results from OpenStreetMap.' }
-  } catch (err) {
-    if (signal?.aborted) throw err
-    return { places: curated, mode: 'fallback', note: `${failureReason(err)} Showing ORBIT’s curated Kozhikode places only.` }
-  }
+  return fetchNearbyPlaces({ coords: KOZHIKODE_CENTRE.coords, radiusKm: 25 }, { signal })
 }

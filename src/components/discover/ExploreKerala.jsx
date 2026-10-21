@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 import Chip from '../ui/Chip'
 import PlaceCard from './PlaceCard'
 import { EXPLORE_GROUPS, KERALA_PLACES } from '../../data/keralaPlaces'
+import { allCachedPlaces } from '../../services/placeCache'
 import { withDistance } from '../../utils/distanceUtils'
 import { cn } from '../../lib/ui'
 
@@ -14,18 +15,19 @@ export default function ExploreKerala({ origin, onStartHere }) {
   const [q, setQ] = useState('')
   const [district, setDistrict] = useState('')
   const [group, setGroup] = useState(null)
-  const districts = useMemo(() => [...new Set(KERALA_PLACES.map((p) => p.district))].sort(), [])
+  const allPlaces = useMemo(() => (KERALA_PLACES.length > 0 ? KERALA_PLACES : allCachedPlaces()), [])
+  const districts = useMemo(() => [...new Set(allPlaces.map((p) => p.district))].filter(Boolean).sort(), [allPlaces])
 
   const filtered = useMemo(() => {
     const term = norm(q.trim())
-    const list = KERALA_PLACES.filter(
+    const list = allPlaces.filter(
       (p) =>
         (!district || p.district === district) &&
-        (!group || p.groups.includes(group)) &&
-        (!term || norm(p.name).includes(term) || norm(p.district).includes(term) || norm(p.description).includes(term)),
+        (!group || p.groups?.includes(group)) &&
+        (!term || norm(p.name).includes(term) || norm(p.district || '').includes(term) || norm(p.description || '').includes(term)),
     )
     return origin?.coords ? withDistance(list, origin.coords) : list.map((p) => ({ ...p, distanceKm: null }))
-  }, [q, district, group, origin])
+  }, [allPlaces, q, district, group, origin])
 
   const byDistrict = useMemo(() => {
     const m = new Map()
@@ -36,9 +38,9 @@ export default function ExploreKerala({ origin, onStartHere }) {
   return (
     <section aria-labelledby="explore-title">
       <h2 id="explore-title" className="text-2xl font-medium">
-        Explore Kerala
+        Explore Destinations
       </h2>
-      <p className="mt-1 text-sm text-muted">Destinations across the state — many are a day trip or more away. ORBIT curated list; locations approximate.</p>
+      <p className="mt-1 text-sm text-muted">Browse destinations and places to visit around the world — then plan an adventure that fits your time and budget.</p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_220px]">
         <div className="relative">
@@ -50,16 +52,16 @@ export default function ExploreKerala({ origin, onStartHere }) {
             id={ids.q}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search beaches, forts, Wayanad…"
+            placeholder="Search landmarks, parks, cities…"
             className="h-12 w-full rounded-xl bg-white pr-4 pl-10 ring-1 ring-navy/15 focus:ring-2 focus:ring-sky focus:outline-none"
           />
         </div>
         <div>
           <label htmlFor={ids.d} className="sr-only">
-            Filter by city or district
+            Filter by city or destination
           </label>
           <select id={ids.d} value={district} onChange={(e) => setDistrict(e.target.value)} className="h-12 w-full cursor-pointer rounded-xl bg-white px-4 ring-1 ring-navy/15 focus:ring-2 focus:ring-sky focus:outline-none">
-            <option value="">All cities & districts</option>
+            <option value="">All cities & regions</option>
             {districts.map((d) => (
               <option key={d} value={d}>
                 {d}

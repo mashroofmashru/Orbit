@@ -6,7 +6,8 @@ import Chip from '../ui/Chip'
 import Notice from '../ui/Notice'
 import { BUDGET_OPTIONS, BUFFER_OPTIONS, DURATION_OPTIONS, INTERESTS, LIMITS, MOODS } from '../../data/options'
 import { HUBS } from '../../data/adventures'
-import { haversineKm } from '../../lib/planner'
+import { haversineKm, resolveStart } from '../../lib/planner'
+import { nearestDistrict, searchLocal } from '../../services/locationService'
 import { useGeolocation } from '../../hooks/useGeolocation'
 import { useOrbitStore } from '../../store/useOrbitStore'
 import { cn } from '../../lib/ui'
@@ -195,13 +196,25 @@ export function LocationField({ compact = false, error }) {
   async function useCurrentLocation() {
     const coords = await geo.request()
     if (!coords) return
-    const nearest = HUBS.map((h) => ({ h, km: haversineKm(coords, h.coords) })).sort((a, b) => a.km - b.km)[0]
-    const label = nearest.km <= 25 ? `Current location · near ${nearest.h.name}` : 'Current location'
+    const district = nearestDistrict(coords)
+    const nearestHub = HUBS.map((h) => ({ h, km: haversineKm(coords, h.coords) })).sort((a, b) => a.km - b.km)[0]
+    let label = 'Current location'
+    if (district?.name) {
+      label = `Current location · near ${district.name}`
+    } else if (nearestHub && nearestHub.km <= 25) {
+      label = `Current location · near ${nearestHub.h.name}`
+    }
     update({ location: { label, coords, source: 'geo' } })
   }
 
   function onType(value) {
-    update({ location: { label: value, coords: null, source: 'manual' } })
+    const resolved = resolveStart({ label: value })
+    let coords = resolved.coords
+    if (!coords && value.trim().length >= 3) {
+      const match = searchLocal(value)[0]
+      if (match?.coords) coords = match.coords
+    }
+    update({ location: { label: value, coords: coords ?? null, source: coords ? 'manual' : 'text' } })
   }
 
   const usingGeo = location.source === 'geo' && location.coords
@@ -220,7 +233,7 @@ export function LocationField({ compact = false, error }) {
             type="text"
             value={location.label}
             onChange={(e) => onType(e.target.value)}
-            placeholder="e.g. New Delhi Railway Station"
+            placeholder="e.g. Eiffel Tower, Paris or Times Square, NY or Connaught Place, Delhi"
             autoComplete="off"
             aria-invalid={Boolean(error)}
             aria-describedby={error ? errId : undefined}
@@ -262,9 +275,9 @@ export function LocationField({ compact = false, error }) {
         <>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <Link to="/adventure/discover" className="inline-flex min-h-11 items-center gap-1 font-bold text-sky-600 hover:underline sm:min-h-0">
-              In Kerala? Discover real places near you →
+              Discover places around you →
             </Link>
-            <span className="text-muted">Demo stations:</span>
+            <span className="text-muted">Popular spots:</span>
             {HUBS.map((h) => (
               <button
                 key={h.id}
@@ -272,15 +285,14 @@ export function LocationField({ compact = false, error }) {
                 onClick={() => onType(h.name)}
                 className="inline-flex min-h-11 cursor-pointer items-center rounded-full bg-cream-200/70 px-3 py-1 font-medium sm:min-h-8 text-navy transition hover:bg-orange-50 hover:text-orange-700"
               >
-                {h.name}
+                {h.city || h.name}
               </button>
             ))}
           </div>
           <p className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-muted">
             <ShieldCheck className="mt-px size-4 shrink-0 text-success-700" />
-            Location is only requested when you tap the button. Adventure planning stays in this browser and coordinates are
-            never stored on an ORBIT server. “Discover Kerala” nearby search sends them to OpenStreetMap’s public Overpass
-            service, and map tiles load from OpenStreetMap.
+            Location is only requested when you tap the button. Adventure planning coordinates are never stored on an ORBIT server.
+            Map tiles and nearby place data load securely from OpenStreetMap.
           </p>
         </>
       )}

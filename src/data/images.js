@@ -33,7 +33,12 @@ const PHOTOS = {
 }
 
 export function photoUrl(key, width = 800) {
+  if (!key) return null
+  if (typeof key === 'string' && (key.startsWith('http://') || key.startsWith('https://'))) {
+    return key
+  }
   const id = PHOTOS[key]
   if (!id) return null
   return `https://images.unsplash.com/photo-${id}?w=${width}&q=70&auto=format&fit=crop`
 }
+

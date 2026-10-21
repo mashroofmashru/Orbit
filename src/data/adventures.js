@@ -32,6 +32,46 @@ export const HUBS = [
     aliases: ['ksr', 'bengaluru', 'bangalore', 'majestic', 'sbc', 'city junction'],
     image: 'bengaluruSkyline',
   },
+  {
+    id: 'london',
+    name: 'King’s Cross Station, London',
+    city: 'London',
+    coords: [51.5308, -0.1238],
+    aliases: ['london', 'kings cross', 'king cross', 'westminster', 'uk'],
+    image: 'bridge',
+  },
+  {
+    id: 'paris',
+    name: 'Gare du Nord, Paris',
+    city: 'Paris',
+    coords: [48.8809, 2.3553],
+    aliases: ['paris', 'gare du nord', 'eiffel', 'france'],
+    image: 'monument',
+  },
+  {
+    id: 'newyork',
+    name: 'Grand Central Terminal, New York',
+    city: 'New York',
+    coords: [40.7527, -73.9772],
+    aliases: ['new york', 'nyc', 'grand central', 'manhattan', 'times square'],
+    image: 'cityscape',
+  },
+  {
+    id: 'tokyo',
+    name: 'Tokyo Station, Japan',
+    city: 'Tokyo',
+    coords: [35.6812, 139.7671],
+    aliases: ['tokyo', 'shinjuku', 'shibuya', 'japan'],
+    image: 'skyline',
+  },
+  {
+    id: 'dubai',
+    name: 'Downtown Dubai',
+    city: 'Dubai',
+    coords: [25.1972, 55.2744],
+    aliases: ['dubai', 'burj khalifa', 'uae'],
+    image: 'monument',
+  },
 ]
 
 export const ADVENTURES = [

@@ -12,6 +12,7 @@ import { createLinks } from './services/links.js'
 import { createNotifications } from './services/notifications.js'
 import { createPush } from './services/push.js'
 import { createTripsService, toItem, toTrip } from './services/trips.js'
+import { suggestAdventuresWithAi } from './services/adventureAi.js'
 
 const distDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist')
 
@@ -57,6 +58,73 @@ export function createApp(config, { db = openDatabase(config.dbPath), pushSendIm
 
   api.get('/health', (_req, res) => res.json({ ok: true, push: push.enabled, ai: config.ai.enabled && config.ai.hasCredentials }))
   api.get('/rules', (_req, res) => res.json(publicRules(config.scoring)))
+
+  // Proxy for OpenStreetMap Overpass with user-agent, fallback mirrors and caching
+  const osmCache = new Map()
+  api.post(
+    '/places/osm',
+    rateLimit({ name: 'osm', windowMs: 60000, max: 60 }),
+    handler(async (req, res) => {
+      const { query } = req.body || {}
+      if (!query || typeof query !== 'string' || query.length > 3000) {
+        throw new HttpError(400, 'Invalid query')
+      }
+      const cached = osmCache.get(query)
+      if (cached && Date.now() - cached.at < 24 * 3600 * 1000) {
+        return res.json(cached.data)
+      }
+      const endpoints = [
+        'https://lz4.overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.private.coffee/api/interpreter',
+      ]
+      let lastErr = null
+      for (const ep of endpoints) {
+        try {
+          const ctrl = new AbortController()
+          const timer = setTimeout(() => ctrl.abort(), 15000)
+          const upstream = await fetch(ep, {
+            method: 'POST',
+            headers: {
+              'User-Agent': 'OrbitTravelPlanner/1.0 (https://orbit.local; contact@orbit.local)',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `data=${encodeURIComponent(query)}`,
+            signal: ctrl.signal,
+          })
+          clearTimeout(timer)
+          if (!upstream.ok) {
+            lastErr = new Error(`HTTP ${upstream.status}`)
+            continue
+          }
+          const data = await upstream.json()
+          osmCache.set(query, { at: Date.now(), data })
+          if (osmCache.size > 150) {
+            const oldestKey = osmCache.keys().next().value
+            osmCache.delete(oldestKey)
+          }
+          return res.json(data)
+        } catch (e) {
+          lastErr = e
+        }
+      }
+      throw new HttpError(503, `Overpass unavailable: ${lastErr?.message || 'timeout'}`)
+    }),
+  )
+
+  api.post(
+    '/adventure/suggest',
+    rateLimit({ name: 'adventure-suggest', windowMs: 60000, max: 60 }),
+    handler(async (req, res) => {
+      const preferences = req.body || {}
+      const result = await suggestAdventuresWithAi(config, preferences)
+      if (!result) {
+        throw new HttpError(503, 'Could not generate recommendations from Gemini AI at this moment.')
+      }
+      res.json(result)
+    }),
+  )
 
   api.post(
     '/session',

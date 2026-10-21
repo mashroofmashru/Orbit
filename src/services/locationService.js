@@ -1,36 +1,40 @@
 import { KERALA_DISTRICTS, KERALA_PLACES } from '../data/keralaPlaces'
 import { haversineKm } from '../utils/distanceUtils'
 
-// Rough bounding box for Kerala — used only to say "you seem to be outside Kerala".
-const KERALA_BOX = { south: 8.1, north: 12.9, west: 74.8, east: 77.5 }
-export const isInKerala = ([lat, lon]) => lat >= KERALA_BOX.south && lat <= KERALA_BOX.north && lon >= KERALA_BOX.west && lon <= KERALA_BOX.east
+export const isInKerala = () => true
 
-/** Nearest curated city/district to a coordinate — the "nearest recognizable area". No network call. */
+/** Nearest curated city/destination to a coordinate worldwide. No network call. */
 export function nearestDistrict(coords) {
+  if (!coords) return null
   let best = null
   for (const d of KERALA_DISTRICTS) {
     const km = haversineKm(coords, d.coords)
     if (!best || km < best.km) best = { ...d, km }
   }
-  return best
+  return best && best.km <= 100 ? best : null
 }
 
 export function describeCurrentLocation(coords) {
   const near = nearestDistrict(coords)
-  if (!isInKerala(coords)) return { label: 'Current location (outside Kerala)', district: near?.name ?? null }
+  if (!near) {
+    return {
+      label: `Current location (${coords[0].toFixed(3)}, ${coords[1].toFixed(3)})`,
+      district: null,
+    }
+  }
   return { label: `Current location · near ${near.name}`, district: near.name }
 }
 
 const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 
-/** Instant, offline matches against our own district and place lists. */
+/** Instant, offline matches against our worldwide destination list. */
 export function searchLocal(query) {
   const q = norm(query)
   if (!q) return []
   const districts = KERALA_DISTRICTS.filter((d) => norm(d.name).includes(q)).map((d) => ({
     id: `district-${d.id}`,
     label: d.name,
-    detail: 'City / district',
+    detail: 'City / destination',
     coords: d.coords,
     source: 'ORBIT list',
   }))
@@ -45,8 +49,7 @@ export function searchLocal(query) {
 }
 
 // ── OpenStreetMap Nominatim search ───────────────────────────────────────────
-// Policy (operations.osmfoundation.org/policies/nominatim): max 1 request/second, no autocomplete,
-// cache results, attribute OpenStreetMap. We only call it when the user presses "Search".
+// Worldwide search for any place, landmark, city, airport or address.
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search'
 const searchCache = new Map()
 let lastRequestAt = 0
@@ -64,10 +67,7 @@ export async function searchOnline(query, { signal } = {}) {
   const params = new URLSearchParams({
     q,
     format: 'jsonv2',
-    countrycodes: 'in',
-    viewbox: `${KERALA_BOX.west},${KERALA_BOX.north},${KERALA_BOX.east},${KERALA_BOX.south}`,
-    bounded: '1',
-    limit: '5',
+    limit: '6',
     'accept-language': 'en',
   })
   const res = await fetch(`${NOMINATIM}?${params}`, { signal, headers: { Accept: 'application/json' } })

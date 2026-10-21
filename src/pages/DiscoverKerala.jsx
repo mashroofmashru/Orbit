@@ -11,7 +11,7 @@ import { buttonClass, cn } from '../lib/ui'
 
 const TABS = [
   { id: 'nearby', label: 'Nearby', icon: Compass },
-  { id: 'explore', label: 'Explore Kerala', icon: MapIcon },
+  { id: 'explore', label: 'Explore Destinations', icon: MapIcon },
 ]
 
 export default function DiscoverKerala() {
@@ -38,9 +38,9 @@ export default function DiscoverKerala() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <PageHero
-        eyebrow="Discover Kerala"
+        eyebrow="Discover Worldwide"
         title="Real places around you"
-        description="Find what’s genuinely nearby, or browse destinations across Kerala — then plan an adventure that fits your time and budget."
+        description="Find what’s genuinely nearby, or explore destinations across the world — then plan an adventure that fits your time and budget."
         mascot={{ state: 'welcome', message: 'Where shall we explore?' }}
       >
         {location.coords && (
@@ -84,9 +84,9 @@ export default function DiscoverKerala() {
           ) : (
             <div className="rounded-3xl bg-white p-8 text-center ring-1 ring-navy/5">
               <p className="text-lg font-bold">Choose a starting point to see what’s nearby</p>
-              <p className="mt-1 text-muted">Use your current location, pick a city, or search above. Or browse the whole state:</p>
+              <p className="mt-1 text-muted">Use your current location, pick a city, or search above. Or browse popular destinations:</p>
               <button type="button" onClick={() => setTab('explore')} className={buttonClass('secondary', 'md', 'mt-4')}>
-                Explore Kerala
+                Explore Destinations
               </button>
             </div>
           )

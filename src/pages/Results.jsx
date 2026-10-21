@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { ArrowLeft, LayoutGrid, Map as MapIcon, RefreshCw, Search, SearchX } from 'lucide-react'
+import { ArrowLeft, LayoutGrid, Map as MapIcon, RefreshCw, Search, SearchX, Sparkles } from 'lucide-react'
 import AdventureMap from '../components/map/AdventureMap'
 import Notice from '../components/ui/Notice'
 import PageHero from '../components/ui/PageHero'
 import PlaceCard, { PlaceCardSkeleton } from '../components/discover/PlaceCard'
-import { fetchKozhikodePlaces, KOZHIKODE_CENTRE, OSM_ATTRIBUTION } from '../services/nearbyPlacesService'
+import { fetchNearbyPlaces, KOZHIKODE_CENTRE, OSM_ATTRIBUTION } from '../services/nearbyPlacesService'
+import { nearestDistrict } from '../services/locationService'
+import { computeWindow, getBudget, resolveStart } from '../lib/planner'
 import { useOrbitStore } from '../store/useOrbitStore'
-import { withDistance } from '../utils/distanceUtils'
+import { KERALA_PLACES } from '../data/keralaPlaces'
+import { setCachedQuery } from '../services/placeCache'
+import { withDistance, withinRadius } from '../utils/distanceUtils'
 import { buttonClass, cn } from '../lib/ui'
 
 const PAGE_SIZE = 24
@@ -23,9 +27,12 @@ const SORTS = [
   { id: 'name', label: 'A–Z' },
 ]
 
-/** Every tourist spot and food place in Kozhikode — live from OpenStreetMap, plus ORBIT's curated picks. */
+/** Tourist spots and food places for ANY selected location or coordinates — Gemini AI curated with real scraped images. */
 export default function Results() {
-  const location = useOrbitStore((s) => s.preferences.location)
+  const prefs = useOrbitStore((s) => s.preferences)
+  const location = prefs.location
+  const updatePreferences = useOrbitStore((s) => s.updatePreferences)
+  const [resolvedOrigin, setResolvedOrigin] = useState(null)
   const [state, setState] = useState({ key: null, status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [filter, setFilter] = useState('all')
@@ -34,18 +41,151 @@ export default function Results() {
   const [view, setView] = useState('list')
   const [shown, setShown] = useState(PAGE_SIZE)
 
+  // Starting location: resolved by Gemini, or user GPS coords, or resolved label, or typed text
+  const origin = useMemo(() => {
+    if (resolvedOrigin?.coords) return resolvedOrigin
+    if (location?.coords) {
+      return {
+        label: location.label || 'Current location',
+        coords: location.coords,
+      }
+    }
+    const resolved = resolveStart(location)
+    if (resolved?.coords) {
+      return {
+        label: resolved.label || location?.label || 'your starting point',
+        coords: resolved.coords,
+      }
+    }
+    const typed = (location?.label || '').trim()
+    return {
+      label: typed || 'your location',
+      coords: null,
+    }
+  }, [location, resolvedOrigin])
+
+  const districtName = useMemo(() => {
+    if (resolvedOrigin?.label) return resolvedOrigin.label.split(',')[0].trim()
+    const cleanTyped = (location?.label || '').trim()
+    if (cleanTyped && !cleanTyped.toLowerCase().startsWith('current location') && cleanTyped !== 'your starting point') {
+      return cleanTyped.split(',')[0].trim()
+    }
+    if (origin.coords) {
+      const near = nearestDistrict(origin.coords)
+      if (near?.name) return near.name
+    }
+    return cleanTyped || 'your location'
+  }, [origin.coords, location?.label, resolvedOrigin])
+
+  const win = useMemo(() => computeWindow(prefs, new Date()), [prefs])
+  const durationMinutes = Number.isFinite(win.windowMinutes) && win.windowMinutes > 0
+    ? win.windowMinutes
+    : (prefs.durationOption === 'custom' ? Number(prefs.customDuration) : Number(prefs.durationOption || 60))
+  const budget = getBudget(prefs)
+
+  const moodsList = Array.isArray(prefs.moods) && prefs.moods.length > 0 ? prefs.moods : (prefs.mood ? [prefs.mood] : [])
+  const moodString = moodsList.join(', ')
+  const interestsList = useMemo(() => (Array.isArray(prefs.interests) ? prefs.interests : []), [prefs.interests])
+  const interestsString = interestsList.slice().sort().join(',')
+
+  const rawLabel = (location?.label || '').trim().toLowerCase()
+  const inputOriginKey = location?.source === 'geo' && location?.coords
+    ? `geo-${Number(location.coords[0]).toFixed(3)},${Number(location.coords[1]).toFixed(3)}`
+    : (rawLabel ? `text-${rawLabel}` : (location?.coords ? `${Number(location.coords[0]).toFixed(3)},${Number(location.coords[1]).toFixed(3)}` : 'default-location'))
+
+  const queryKey = `${inputOriginKey}-${durationMinutes}-${budget}-${moodString || 'any'}-${interestsString || 'all'}`
+  const stateKey = `${inputOriginKey}-${attempt}`
+
   useEffect(() => {
     const ctrl = new AbortController()
-    fetchKozhikodePlaces({ signal: ctrl.signal })
-      .then((r) => setState({ key: attempt, status: 'ready', ...r }))
-      .catch(() => !ctrl.signal.aborted && setState({ key: attempt, status: 'ready', places: [], mode: 'fallback', note: 'Something went wrong loading places.' }))
-    return () => ctrl.abort()
-  }, [attempt])
 
-  const loading = state.key !== attempt
-  // Distances from the user's chosen starting point when they have one, otherwise from the city centre
-  const origin = location?.coords ? { label: location.label || 'your starting point', coords: location.coords } : KOZHIKODE_CENTRE
-  const withKm = useMemo(() => (loading ? [] : withDistance(state.places, origin.coords)), [loading, state.places, origin.coords])
+    async function loadAdventurePlaces() {
+      // 1. Try Gemini AI with user's specific time, budget, mood, and interests
+      try {
+        const aiRes = await fetch('/api/adventure/suggest', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Orbit-Client': '1',
+          },
+          body: JSON.stringify({
+            location: location?.label || origin.label,
+            coords: location?.coords || origin.coords,
+            durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : 60,
+            buffer: prefs.buffer || 10,
+            budget: Number.isFinite(budget) ? budget : 500,
+            interests: interestsList,
+            mood: moodString,
+          }),
+          signal: ctrl.signal,
+        })
+
+        if (aiRes.ok) {
+          const data = await aiRes.json()
+          if (data?.places?.length > 0) {
+            setCachedQuery(queryKey, data.places)
+            if (data?.origin?.coords) {
+              setResolvedOrigin(data.origin)
+              if (!location?.coords) {
+                updatePreferences({
+                  location: {
+                    ...location,
+                    label: location?.label || data.origin.label,
+                    coords: data.origin.coords,
+                    source: 'manual',
+                  },
+                })
+              }
+            }
+            if (!ctrl.signal.aborted) {
+              setState({
+                key: stateKey,
+                status: 'ready',
+                places: data.places,
+                mode: 'ai',
+                model: data.model,
+                note: `AI-curated by Gemini (${data.model}) for your ${durationMinutes}-minute window & ₹${budget} budget.`,
+              })
+              return
+            }
+          }
+        }
+      } catch (aiErr) {
+        if (ctrl.signal.aborted) return
+        console.warn('[Results] Gemini AI suggest failed, falling back to live OSM:', aiErr)
+      }
+
+      // 2. Fallback to OpenStreetMap if AI service is unavailable
+      try {
+        const fallbackCoords = origin.coords || KOZHIKODE_CENTRE.coords
+        const osmRes = await fetchNearbyPlaces({ coords: fallbackCoords, radiusKm: 25 }, { signal: ctrl.signal })
+        if (!ctrl.signal.aborted) {
+          setState({ key: stateKey, status: 'ready', ...osmRes })
+        }
+      } catch {
+        if (!ctrl.signal.aborted) {
+          setState({
+            key: stateKey,
+            status: 'ready',
+            places: [],
+            mode: 'fallback',
+            note: 'Something went wrong loading places.',
+          })
+        }
+      }
+    }
+
+    loadAdventurePlaces()
+    return () => ctrl.abort()
+  }, [attempt, inputOriginKey, stateKey, location, durationMinutes, budget, interestsList, interestsString, moodString, prefs.buffer, queryKey, origin.label, origin.coords, updatePreferences])
+
+  const loading = state.key !== stateKey
+  const effectiveCoords = origin.coords || KOZHIKODE_CENTRE.coords
+  const curatedNow = useMemo(() => withinRadius(KERALA_PLACES, effectiveCoords, 35), [effectiveCoords])
+  const activePlaces = useMemo(() => {
+    return loading ? (curatedNow.length > 0 ? curatedNow : []) : (state.places || [])
+  }, [loading, curatedNow, state.places])
+  const withKm = useMemo(() => withDistance(activePlaces, effectiveCoords), [activePlaces, effectiveCoords])
 
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.id, withKm.filter(f.test).length])), [withKm])
   const visible = useMemo(() => {
@@ -70,23 +210,45 @@ export default function Results() {
 
       <PageHero
         className="mt-2"
-        eyebrow="Kozhikode"
+        eyebrow={districtName}
         titleProps={{ 'aria-live': 'polite' }}
-        title={loading ? 'Finding places in Kozhikode…' : `${withKm.length} tourist and food spots in Kozhikode`}
-        description="Attractions, beaches, parks, heritage sites, restaurants and cafés across Kozhikode city and its surroundings."
-        mascot={loading ? { state: 'thinking', message: 'Gathering every spot in town…' } : { state: 'success', message: 'Pick a place and go explore!' }}
+        title={
+          loading
+            ? `Finding places in ${districtName}`
+            : `${withKm.length} places to explore in ${districtName}`
+        }
+        description={
+          loading
+            ? `Finding places you can visit within ${durationMinutes} minutes from ${origin.label}…`
+            : `Handpicked places and experiences fitting your ${durationMinutes}-minute window and ₹${budget} budget, with scraped photos.`
+        }
+        mascot={
+          loading
+            ? { state: 'thinking', message: `Analyzing your ${durationMinutes}-minute window and gathering places in ${districtName}` }
+            : { state: 'success', message: `Found ${withKm.length} spots tailored to your preferences!` }
+        }
       />
 
       {!loading && (
         <Notice tone={state.mode === 'fallback' ? 'warning' : 'info'} className="mt-6">
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>
-              {state.note}
-              {state.mode !== 'fallback' && ' Curated ORBIT places are mixed in and labelled.'} Distances are straight-line from {origin.label}.
+              {state.mode === 'ai' ? (
+                <>
+                  <span className="inline-flex items-center gap-1 font-bold text-amber-700">
+                    <Sparkles className="size-4" /> Gemini AI Recommendations:
+                  </span>{' '}
+                  Places visitable within your {durationMinutes}-minute window (accounting for travel time & visit duration) under ₹{budget}. Real photos scraped from Wikipedia / Wikimedia.
+                </>
+              ) : (
+                <>
+                  {state.note} Distances are straight-line from {origin.label}.
+                </>
+              )}
             </span>
-            {state.mode === 'fallback' && (
+            {(state.mode === 'fallback' || state.mode === 'ai') && (
               <button type="button" onClick={() => setAttempt((n) => n + 1)} className={buttonClass('secondary', 'sm')}>
-                <RefreshCw className="size-4" /> Try live results again
+                <RefreshCw className="size-4" /> Refresh suggestions
               </button>
             )}
           </span>
@@ -171,7 +333,7 @@ export default function Results() {
         </p>
       )}
 
-      {view === 'map' && !loading && page.length > 0 && (
+      {view === 'map' && !loading && page.length > 0 && origin.coords && (
         <div className="mt-4">
           <AdventureMap
             start={{ coords: origin.coords, label: origin.label }}
@@ -183,7 +345,7 @@ export default function Results() {
       )}
 
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {loading ? Array.from({ length: 6 }, (_, i) => <PlaceCardSkeleton key={i} />) : page.map((p, i) => <PlaceCard key={p.id} place={p} index={i} />)}
+        {loading && activePlaces.length === 0 ? Array.from({ length: 6 }, (_, i) => <PlaceCardSkeleton key={i} />) : page.map((p, i) => <PlaceCard key={p.id} place={p} index={i} />)}
       </div>
 
       {!loading && visible.length === 0 && (
@@ -204,7 +366,7 @@ export default function Results() {
         </div>
       )}
 
-      {!loading && state.mode !== 'fallback' && <p className="mt-8 text-center text-xs text-muted">Live data {OSM_ATTRIBUTION}. Opening hours and prices aren’t included — please check locally.</p>}
+      {!loading && state.mode !== 'ai' && state.mode !== 'fallback' && <p className="mt-8 text-center text-xs text-muted">Live data {OSM_ATTRIBUTION}. Opening hours and prices aren’t included — please check locally.</p>}
     </div>
   )
 }

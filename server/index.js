@@ -1,5 +1,8 @@
+import dns from 'node:dns'
 import { createApp } from './app.js'
 import { loadConfig } from './config.js'
+
+dns.setDefaultResultOrder?.('ipv4first')
 
 const config = loadConfig()
 const { app, notifications, db } = createApp(config)

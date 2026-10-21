@@ -15,7 +15,8 @@ import Notice from '../components/ui/Notice'
 import { useOrbitStore } from '../store/useOrbitStore'
 import { MOOD_MAP } from '../data/options'
 import { useNow } from '../hooks/useNow'
-import { computeWindow, getBudget, validateBudget, validateDuration } from '../lib/planner'
+import { computeWindow, getBudget, resolveStart, validateBudget, validateDuration } from '../lib/planner'
+import { searchLocal } from '../services/locationService'
 import { formatClock, formatINR, formatMinutes } from '../lib/format'
 import PageHero from '../components/ui/PageHero'
 import { buttonClass, cn } from '../lib/ui'
@@ -53,6 +54,7 @@ function Section({ id, letter, icon: Icon, title, hint, children, optional }) {
 export default function AdventurePreferences() {
   const navigate = useNavigate()
   const prefs = useOrbitStore((s) => s.preferences)
+  const updatePreferences = useOrbitStore((s) => s.updatePreferences)
   const markSearched = useOrbitStore((s) => s.markSearched)
   const resetPreferences = useOrbitStore((s) => s.resetPreferences)
   const [submitted, setSubmitted] = useState(false)
@@ -89,6 +91,17 @@ export default function AdventurePreferences() {
         (section?.querySelector('[aria-invalid="true"]') ?? section?.querySelector('input, button'))?.focus({ preventScroll: true }),
       )
       return
+    }
+    if (!prefs.location.coords && prefs.location.label) {
+      const resolved = resolveStart(prefs.location)
+      let coords = resolved.coords
+      if (!coords) {
+        const match = searchLocal(prefs.location.label)[0]
+        if (match?.coords) coords = match.coords
+      }
+      if (coords) {
+        updatePreferences({ location: { ...prefs.location, coords, source: 'manual' } })
+      }
     }
     markSearched()
     navigate('/adventure/results')

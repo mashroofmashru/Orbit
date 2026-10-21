@@ -160,7 +160,7 @@ export default function AdventureDetails() {
                   {INTEREST_MAP[i]?.label}
                 </span>
               ))}
-              {!activity.kerala && (
+              {activity.indoor !== undefined && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-200/70 px-3 py-1 text-sm font-medium text-navy">
                   {activity.indoor ? <Warehouse className="size-3.5" /> : <Sun className="size-3.5" />}
                   {activity.indoor ? 'Mostly indoors' : 'Outdoors'}
@@ -169,7 +169,7 @@ export default function AdventureDetails() {
             </div>
           </section>
 
-          {activity.kerala && (
+          {(activity.kerala || activity.isAi || activity.live) && (
             <section className="rounded-3xl bg-white p-6 shadow-card ring-1 ring-navy/5" aria-labelledby="facts-title">
               <h2 id="facts-title" className="flex items-center gap-2 text-lg font-medium">
                 <Info className="size-5 text-sky-600" /> What we know — and what we don’t
@@ -178,7 +178,13 @@ export default function AdventureDetails() {
                 <div>
                   <dt className="text-sm font-bold text-muted">Source</dt>
                   <dd>
-                    {activity.live ? 'OpenStreetMap (live data)' : 'ORBIT curated list'}
+                    {activity.isAi ? (
+                      <span className="font-semibold text-amber-700">Gemini AI Curated (with real scraped photos)</span>
+                    ) : activity.live ? (
+                      'OpenStreetMap (live data)'
+                    ) : (
+                      'ORBIT curated list'
+                    )}
                     {activity.osmUrl && (
                       <a href={activity.osmUrl} target="_blank" rel="noopener noreferrer" className="ml-2 font-bold text-sky-600 hover:underline">
                         View on OpenStreetMap<span className="sr-only"> (opens in a new tab)</span>
@@ -188,17 +194,21 @@ export default function AdventureDetails() {
                 </div>
                 <div>
                   <dt className="text-sm font-bold text-muted">Location</dt>
-                  <dd>{activity.live ? 'Mapped by OpenStreetMap contributors' : 'Approximate — verify on a map before you go'}</dd>
+                  <dd>{activity.isAi ? 'Coordinates verified by Gemini AI' : activity.live ? 'Mapped by OpenStreetMap contributors' : 'Approximate — verify on a map before you go'}</dd>
                 </div>
                 <div>
                   <dt className="text-sm font-bold text-muted">Typical visit</dt>
                   <dd>
-                    {formatMinutes(activity.duration.min)}–{formatMinutes(activity.duration.max)} <span className="text-muted">(ORBIT estimate)</span>
+                    {formatMinutes(activity.duration.min)}–{formatMinutes(activity.duration.max)} <span className="text-muted">(Estimated)</span>
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-bold text-muted">Price, opening hours, entry rules</dt>
-                  <dd>Price information unavailable · hours not available — check locally</dd>
+                  <dt className="text-sm font-bold text-muted">Estimated cost & entry</dt>
+                  <dd>
+                    {activity.isAi
+                      ? (activity.costNote || (activity.cost > 0 ? `₹${activity.cost}` : 'Free entry'))
+                      : 'Price information unavailable · check locally'}
+                  </dd>
                 </div>
               </dl>
             </section>
