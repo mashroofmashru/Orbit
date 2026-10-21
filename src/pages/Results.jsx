@@ -5,7 +5,7 @@ import AdventureMap from '../components/map/AdventureMap'
 import Notice from '../components/ui/Notice'
 import PageHero from '../components/ui/PageHero'
 import PlaceCard, { PlaceCardSkeleton } from '../components/discover/PlaceCard'
-import { fetchNearbyPlaces, KOZHIKODE_CENTRE, OSM_ATTRIBUTION } from '../services/nearbyPlacesService'
+import { fetchNearbyPlaces, OSM_ATTRIBUTION } from '../services/nearbyPlacesService'
 import { nearestDistrict } from '../services/locationService'
 import { computeWindow, getBudget, resolveStart } from '../lib/planner'
 import { useOrbitStore } from '../store/useOrbitStore'
@@ -161,48 +161,45 @@ export default function Results() {
         console.warn('[Results] Gemini AI suggest failed, checking curated spots and OSM:', aiErr)
       }
 
-      // 3. Fallback to curated destinations within radius if available
-      const fallbackCoords = origin.coords || KOZHIKODE_CENTRE.coords
-      const curatedNear = withinRadius(KERALA_PLACES, fallbackCoords, 45)
-      if (curatedNear.length > 0) {
-        if (!ctrl.signal.aborted) {
-          setState({
-            key: stateKey,
-            status: 'ready',
-            places: curatedNear,
-            mode: 'fallback',
-            note: `Showing handpicked spots in ${districtName}.`,
-          })
-        }
-        return
-      }
-
-      // 4. Fallback to OpenStreetMap if AI service is unavailable
-      try {
-        const osmRes = await fetchNearbyPlaces({ coords: fallbackCoords, radiusKm: 25 }, { signal: ctrl.signal })
-        if (!ctrl.signal.aborted) {
-          if (osmRes.places?.length > 0) {
-            setState({ key: stateKey, status: 'ready', ...osmRes })
-          } else {
+      // 3. Fallback to curated destinations within radius if coordinates are available
+      if (origin.coords) {
+        const curatedNear = withinRadius(KERALA_PLACES, origin.coords, 45)
+        if (curatedNear.length > 0) {
+          if (!ctrl.signal.aborted) {
             setState({
               key: stateKey,
               status: 'ready',
-              places: KERALA_PLACES.slice(0, 12),
+              places: curatedNear,
               mode: 'fallback',
-              note: `Showing featured places you might enjoy.`,
+              note: `Showing handpicked spots near ${districtName}.`,
             })
           }
+          return
         }
-      } catch {
-        if (!ctrl.signal.aborted) {
-          setState({
-            key: stateKey,
-            status: 'ready',
-            places: KERALA_PLACES.slice(0, 12),
-            mode: 'fallback',
-            note: 'Showing handpicked spots.',
-          })
+
+        // 4. Fallback to OpenStreetMap if AI service is unavailable
+        try {
+          const osmRes = await fetchNearbyPlaces({ coords: origin.coords, radiusKm: 25 }, { signal: ctrl.signal })
+          if (!ctrl.signal.aborted) {
+            if (osmRes.places?.length > 0) {
+              setState({ key: stateKey, status: 'ready', ...osmRes })
+              return
+            }
+          }
+        } catch {
+          // ignore
         }
+      }
+
+      // 5. If AI and coordinate fallbacks are not available
+      if (!ctrl.signal.aborted) {
+        setState({
+          key: stateKey,
+          status: 'ready',
+          places: [],
+          mode: 'fallback',
+          note: `We couldn't reach the search service for "${districtName}". Please check your connection or try again.`,
+        })
       }
     }
 
@@ -211,12 +208,14 @@ export default function Results() {
   }, [attempt, inputOriginKey, stateKey, queryKey, durationMinutes, budget, interestsString, moodString, prefs.buffer, location?.label, location?.coords, origin.label, origin.coords, interestsList, districtName])
 
   const loading = state.key !== stateKey
-  const effectiveCoords = origin.coords || KOZHIKODE_CENTRE.coords
-  const curatedNow = useMemo(() => withinRadius(KERALA_PLACES, effectiveCoords, 35), [effectiveCoords])
   const activePlaces = useMemo(() => {
-    return loading ? (curatedNow.length > 0 ? curatedNow : []) : (state.places || [])
-  }, [loading, curatedNow, state.places])
-  const withKm = useMemo(() => withDistance(activePlaces, effectiveCoords), [activePlaces, effectiveCoords])
+    return loading ? [] : (state.places || [])
+  }, [loading, state.places])
+  const effectiveCoords = origin.coords
+  const withKm = useMemo(() => {
+    if (!effectiveCoords) return activePlaces.map((p) => ({ ...p, distanceKm: null }))
+    return withDistance(activePlaces, effectiveCoords)
+  }, [activePlaces, effectiveCoords])
 
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.id, withKm.filter(f.test).length])), [withKm])
   const visible = useMemo(() => {
@@ -376,7 +375,9 @@ export default function Results() {
       )}
 
       <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {loading && activePlaces.length === 0 ? Array.from({ length: 6 }, (_, i) => <PlaceCardSkeleton key={i} />) : page.map((p, i) => <PlaceCard key={p.id} place={p} index={i} />)}
+        {loading
+          ? Array.from({ length: 6 }, (_, i) => <PlaceCardSkeleton key={i} />)
+          : page.map((p, i) => <PlaceCard key={p.id} place={p} index={i} />)}
       </div>
 
       {!loading && visible.length === 0 && (
