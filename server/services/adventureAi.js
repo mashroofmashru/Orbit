@@ -41,11 +41,24 @@ const PlacesResponseSchema = z.object({
 })
 
 const SYSTEM_INSTRUCTION = `You are an expert worldwide travel guide and trip planner for ORBIT.
-You support destinations across the globe — anywhere inside India or internationally (e.g. Europe, Americas, Asia, Middle East, Africa, Oceania).
-Given a user's starting location and/or coordinates, available time window (in minutes), budget, interests, and mood:
-1. If coordinates [lat, lon] are provided (such as from GPS / "Current location" anywhere on Earth), reverse-geocode and identify the actual city, district, town or neighbourhood name, and return it in resolved_location_name. Return resolved_coords as [lat, lon].
-2. If starting_location is a place name without coordinates (any town, city, landmark, or region anywhere worldwide, inside India or abroad: e.g. London, Paris, Tokyo, New York, Dubai, Singapore, Rome, Sydney, Mumbai, Delhi, Kochi, etc.), determine its accurate latitude and longitude, and return them in resolved_coords [lat, lon]. Return resolved_location_name as the clean place name.
-3. Suggest 6 to 12 REAL, exciting places and activities to visit strictly starting from resolved_coords within available_duration_minutes.
+You support ANY destination across the globe — inside India (e.g. Kolkata, Chennai, Delhi, Mumbai, Bengaluru, Goa, Jaipur, Kerala, etc.) or internationally (e.g. Thailand, Europe, Americas, Asia, Middle East, Africa, Oceania).
+
+LOCATION RESOLUTION RULES:
+1. Handle vernacular, colloquial, or phonetic spellings gracefully:
+   - "kalkatha", "calcutta", "kolkata" -> Kolkata, West Bengal, India [22.5726, 88.3639]
+   - "chennai", "madras" -> Chennai, Tamil Nadu, India [13.0827, 80.2707]
+   - "bangalore", "bengaluru" -> Bengaluru, Karnataka, India [12.9716, 77.5946]
+   - "bombay", "mumbai" -> Mumbai, Maharashtra, India [19.076, 72.8777]
+   - "calicut", "kozhikode" -> Kozhikode, Kerala, India [11.2588, 75.7804]
+2. Handle Thailand local areas, districts, and beach neighbourhoods with high precision:
+   - Bangkok local areas: Sukhumvit, Silom, Siam, Rattanakosin, Chinatown (Yaowarat), Thonglor, Ari, Chatuchak.
+   - Phuket local areas: Patong, Kata, Karon, Rawai, Kamala, Bang Tao, Old Phuket Town, Chalong.
+   - Chiang Mai local areas: Nimman (Nimmanhaemin), Old City, Chang Khlan, Tha Phae.
+   - Pattaya local areas: Central Pattaya, Jomtien, Naklua, Walking Street, Pratumnak.
+   - Koh Samui (Chaweng, Lamai), Krabi (Ao Nang, Railay), Hua Hin, etc.
+3. If coordinates [lat, lon] are provided (such as from GPS / "Current location" anywhere on Earth), reverse-geocode and identify the actual city, district, town or neighbourhood name, and return it in resolved_location_name. Return resolved_coords as [lat, lon].
+4. If starting_location is a place name without coordinates (any town, city, landmark, or region anywhere worldwide, inside India or abroad), determine its accurate latitude and longitude, and return them in resolved_coords [lat, lon]. Return resolved_location_name as the clean place name.
+5. Suggest 6 to 12 REAL, exciting places and activities to visit strictly starting from resolved_coords within available_duration_minutes.
 
 CRITICAL RULES:
 1. Every place must be a real, authentic place with reasonably accurate latitude and longitude.
@@ -69,6 +82,7 @@ export async function scrapePlaceImage(placeName, district = '') {
   ]
 
   for (const q of queries) {
+    // 1. Try Wikipedia PageImages API
     try {
       const url = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(q)}&gsrlimit=1&prop=pageimages&pithumbsize=960&format=json&origin=*`
       const ctrl = new AbortController()
@@ -90,7 +104,31 @@ export async function scrapePlaceImage(placeName, district = '') {
         }
       }
     } catch {
-      // Ignore network timeout/failure and try next query or fallback
+      // Ignore network timeout/failure and try Wikimedia Commons
+    }
+
+    // 2. Try Wikimedia Commons Search API
+    try {
+      const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(q)}&gsrlimit=1&prop=imageinfo&iiprop=url&iiurlwidth=960&format=json&origin=*`
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 4000)
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'OrbitTravelApp/1.0 (https://orbit.app; travel@orbit.app)' },
+        signal: ctrl.signal,
+      })
+      clearTimeout(timer)
+
+      if (res.ok) {
+        const data = await res.json()
+        const pages = data?.query?.pages
+        if (pages) {
+          const firstPage = Object.values(pages)[0]
+          const thumb = firstPage?.imageinfo?.[0]?.thumburl || firstPage?.imageinfo?.[0]?.url
+          if (thumb) return thumb
+        }
+      }
+    } catch {
+      // Ignore and try next query
     }
   }
 
@@ -168,11 +206,14 @@ export async function suggestAdventuresWithAi(config, preferences) {
   }
 
   const candidateModels = [
-    'gemini-3.8-flash',
-    'gemini-flash-latest',
-    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite',
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3-flash-preview',
     config.ai?.model,
     'gemini-2.5-flash',
+    'gemini-flash-latest',
   ].filter(Boolean)
   const uniqueModels = [...new Set(candidateModels)]
 

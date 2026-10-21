@@ -4,7 +4,7 @@ import AdventureMap from '../map/AdventureMap'
 import Notice from '../ui/Notice'
 import PlaceCard, { PlaceCardSkeleton } from './PlaceCard'
 import { fetchNearbyPlaces, OSM_ATTRIBUTION } from '../../services/nearbyPlacesService'
-import { KERALA_PLACES } from '../../data/keralaPlaces'
+import { DESTINATION_PLACES as KERALA_PLACES } from '../../data/destinations'
 import { withinRadius } from '../../utils/distanceUtils'
 import { buttonClass, cn } from '../../lib/ui'
 

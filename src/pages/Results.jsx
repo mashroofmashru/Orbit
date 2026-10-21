@@ -9,8 +9,8 @@ import { fetchNearbyPlaces, KOZHIKODE_CENTRE, OSM_ATTRIBUTION } from '../service
 import { nearestDistrict } from '../services/locationService'
 import { computeWindow, getBudget, resolveStart } from '../lib/planner'
 import { useOrbitStore } from '../store/useOrbitStore'
-import { KERALA_PLACES } from '../data/keralaPlaces'
-import { setCachedQuery } from '../services/placeCache'
+import { DESTINATION_PLACES as KERALA_PLACES } from '../data/destinations'
+import { getCachedPlaces, getCachedQuery, setCachedQuery } from '../services/placeCache'
 import { withDistance, withinRadius } from '../utils/distanceUtils'
 import { buttonClass, cn } from '../lib/ui'
 
@@ -31,7 +31,6 @@ const SORTS = [
 export default function Results() {
   const prefs = useOrbitStore((s) => s.preferences)
   const location = prefs.location
-  const updatePreferences = useOrbitStore((s) => s.updatePreferences)
   const [resolvedOrigin, setResolvedOrigin] = useState(null)
   const [state, setState] = useState({ key: null, status: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -100,7 +99,24 @@ export default function Results() {
     const ctrl = new AbortController()
 
     async function loadAdventurePlaces() {
-      // 1. Try Gemini AI with user's specific time, budget, mood, and interests
+      // 1. Try local cached places first for instant display
+      const cached = getCachedQuery(queryKey)
+      if (cached?.ids?.length > 0) {
+        const cachedPlaces = getCachedPlaces(cached.ids)
+        if (cachedPlaces.length > 0 && !ctrl.signal.aborted) {
+          setState({
+            key: stateKey,
+            status: 'ready',
+            places: cachedPlaces,
+            mode: 'ai',
+            model: 'cached',
+            note: `Showing saved recommendations for your ${durationMinutes}-minute window & ₹${budget} budget.`,
+          })
+          return
+        }
+      }
+
+      // 2. Fetch recommendations from Gemini AI with real scraped photos
       try {
         const aiRes = await fetch('/api/adventure/suggest', {
           method: 'POST',
@@ -124,19 +140,6 @@ export default function Results() {
           const data = await aiRes.json()
           if (data?.places?.length > 0) {
             setCachedQuery(queryKey, data.places)
-            if (data?.origin?.coords) {
-              setResolvedOrigin(data.origin)
-              if (!location?.coords) {
-                updatePreferences({
-                  location: {
-                    ...location,
-                    label: location?.label || data.origin.label,
-                    coords: data.origin.coords,
-                    source: 'manual',
-                  },
-                })
-              }
-            }
             if (!ctrl.signal.aborted) {
               setState({
                 key: stateKey,
@@ -146,30 +149,58 @@ export default function Results() {
                 model: data.model,
                 note: `AI-curated by Gemini (${data.model}) for your ${durationMinutes}-minute window & ₹${budget} budget.`,
               })
-              return
+              if (data?.origin?.coords) {
+                setResolvedOrigin(data.origin)
+              }
             }
+            return
           }
         }
       } catch (aiErr) {
         if (ctrl.signal.aborted) return
-        console.warn('[Results] Gemini AI suggest failed, falling back to live OSM:', aiErr)
+        console.warn('[Results] Gemini AI suggest failed, checking curated spots and OSM:', aiErr)
       }
 
-      // 2. Fallback to OpenStreetMap if AI service is unavailable
+      // 3. Fallback to curated destinations within radius if available
+      const fallbackCoords = origin.coords || KOZHIKODE_CENTRE.coords
+      const curatedNear = withinRadius(KERALA_PLACES, fallbackCoords, 45)
+      if (curatedNear.length > 0) {
+        if (!ctrl.signal.aborted) {
+          setState({
+            key: stateKey,
+            status: 'ready',
+            places: curatedNear,
+            mode: 'fallback',
+            note: `Showing handpicked spots in ${districtName}.`,
+          })
+        }
+        return
+      }
+
+      // 4. Fallback to OpenStreetMap if AI service is unavailable
       try {
-        const fallbackCoords = origin.coords || KOZHIKODE_CENTRE.coords
         const osmRes = await fetchNearbyPlaces({ coords: fallbackCoords, radiusKm: 25 }, { signal: ctrl.signal })
         if (!ctrl.signal.aborted) {
-          setState({ key: stateKey, status: 'ready', ...osmRes })
+          if (osmRes.places?.length > 0) {
+            setState({ key: stateKey, status: 'ready', ...osmRes })
+          } else {
+            setState({
+              key: stateKey,
+              status: 'ready',
+              places: KERALA_PLACES.slice(0, 12),
+              mode: 'fallback',
+              note: `Showing featured places you might enjoy.`,
+            })
+          }
         }
       } catch {
         if (!ctrl.signal.aborted) {
           setState({
             key: stateKey,
             status: 'ready',
-            places: [],
+            places: KERALA_PLACES.slice(0, 12),
             mode: 'fallback',
-            note: 'Something went wrong loading places.',
+            note: 'Showing handpicked spots.',
           })
         }
       }
@@ -177,7 +208,7 @@ export default function Results() {
 
     loadAdventurePlaces()
     return () => ctrl.abort()
-  }, [attempt, inputOriginKey, stateKey, location, durationMinutes, budget, interestsList, interestsString, moodString, prefs.buffer, queryKey, origin.label, origin.coords, updatePreferences])
+  }, [attempt, inputOriginKey, stateKey, queryKey, durationMinutes, budget, interestsString, moodString, prefs.buffer, location?.label, location?.coords, origin.label, origin.coords, interestsList, districtName])
 
   const loading = state.key !== stateKey
   const effectiveCoords = origin.coords || KOZHIKODE_CENTRE.coords

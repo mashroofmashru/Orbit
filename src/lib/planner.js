@@ -1,5 +1,5 @@
 import { HUBS } from '../data/adventures'
-import { KERALA_DISTRICTS } from '../data/keralaPlaces'
+import { WORLD_DESTINATIONS } from '../data/destinations'
 import { haversineKm } from '../utils/distanceUtils'
 import { BUDGET_OPTIONS, LIMITS } from '../data/options'
 
@@ -148,8 +148,17 @@ export function resolveStart(location) {
   }
   const text = (location?.label || '').trim().toLowerCase()
   const hub = text ? HUBS.find((h) => h.aliases.some((a) => text.includes(a))) : null
-  // Kerala cities/districts typed by name get real coordinates (not a demo hub)
-  const district = !hub && text ? KERALA_DISTRICTS.find((d) => text.includes(d.name.toLowerCase().split(' ')[0])) : null
+  // Major global & domestic cities typed by name get real coordinates immediately
+  const district = !hub && text
+    ? WORLD_DESTINATIONS.find((d) => {
+        const cleanName = d.name.toLowerCase().split(',')[0].trim()
+        return (
+          text.includes(cleanName) ||
+          cleanName.includes(text) ||
+          (d.aliases && d.aliases.some((a) => text.includes(a) || a.includes(text)))
+        )
+      })
+    : null
   if (district) return { label: location.label.trim(), coords: district.coords, hub: null, source: 'manual' }
   return {
     label: location?.label?.trim() || 'Your location',

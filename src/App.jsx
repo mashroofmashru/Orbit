@@ -16,7 +16,7 @@ const TripsDashboard = lazy(() => import('./pages/TripsDashboard'))
 const TripSetup = lazy(() => import('./pages/TripSetup'))
 const TripChecklist = lazy(() => import('./pages/TripChecklist'))
 const Profile = lazy(() => import('./pages/Profile'))
-const DiscoverKerala = lazy(() => import('./pages/DiscoverKerala'))
+const DiscoverPlaces = lazy(() => import('./pages/DiscoverPlaces'))
 
 function PageLoader() {
   return (
@@ -40,7 +40,7 @@ export default function App() {
             {/* Static segments rank above the dynamic :id, so "live" and "results" are never treated as ids */}
             <Route path="results" element={page(<Results />)} />
             <Route path="live" element={page(<LiveAdventure />)} />
-            <Route path="discover" element={page(<DiscoverKerala />)} />
+            <Route path="discover" element={page(<DiscoverPlaces />)} />
             <Route path=":id" element={page(<AdventureDetails />)} />
           </Route>
           <Route path="saved" element={page(<Saved />)} />

@@ -1,4 +1,4 @@
-import { KERALA_DISTRICTS, KERALA_PLACES } from '../data/keralaPlaces'
+import { WORLD_DESTINATIONS, DESTINATION_PLACES } from '../data/destinations'
 import { haversineKm } from '../utils/distanceUtils'
 
 export const isInKerala = () => true
@@ -7,7 +7,7 @@ export const isInKerala = () => true
 export function nearestDistrict(coords) {
   if (!coords) return null
   let best = null
-  for (const d of KERALA_DISTRICTS) {
+  for (const d of WORLD_DESTINATIONS) {
     const km = haversineKm(coords, d.coords)
     if (!best || km < best.km) best = { ...d, km }
   }
@@ -31,14 +31,16 @@ const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9 ]/g, ' '
 export function searchLocal(query) {
   const q = norm(query)
   if (!q) return []
-  const districts = KERALA_DISTRICTS.filter((d) => norm(d.name).includes(q)).map((d) => ({
+  const districts = WORLD_DESTINATIONS.filter((d) => {
+    return norm(d.name).includes(q) || (d.aliases && d.aliases.some((a) => norm(a).includes(q) || q.includes(norm(a))))
+  }).map((d) => ({
     id: `district-${d.id}`,
     label: d.name,
     detail: 'City / destination',
     coords: d.coords,
     source: 'ORBIT list',
   }))
-  const places = KERALA_PLACES.filter((p) => norm(p.name).includes(q) || norm(p.district).includes(q)).map((p) => ({
+  const places = DESTINATION_PLACES.filter((p) => norm(p.name).includes(q) || norm(p.district).includes(q)).map((p) => ({
     id: p.id,
     label: p.name,
     detail: `${p.district} · approximate location`,

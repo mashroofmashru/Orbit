@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { LoaderCircle, LocateFixed, MapPin, Search, X } from 'lucide-react'
 import Notice from '../ui/Notice'
-import { KERALA_DISTRICTS } from '../../data/keralaPlaces'
+import { WORLD_DESTINATIONS as KERALA_DISTRICTS } from '../../data/destinations'
 import { useGeolocation } from '../../hooks/useGeolocation'
 import { describeCurrentLocation, searchLocal, searchOnline } from '../../services/locationService'
 import { useOrbitStore } from '../../store/useOrbitStore'

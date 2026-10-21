@@ -1,4 +1,4 @@
-import { getKeralaActivity } from './keralaActivities'
+import { getActivity as getKeralaActivity } from './activities'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEMONSTRATION DATA

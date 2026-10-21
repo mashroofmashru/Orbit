@@ -1,4 +1,4 @@
-import { KERALA_PLACES } from '../data/keralaPlaces'
+import { DESTINATION_PLACES as KERALA_PLACES } from '../data/destinations'
 import { haversineKm, withinRadius } from '../utils/distanceUtils'
 import { nearestDistrict } from './locationService'
 import { getCachedPlaces, getCachedQuery, setCachedQuery } from './placeCache'
