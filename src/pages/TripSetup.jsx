@@ -306,35 +306,6 @@ export default function TripSetup() {
                         ))}
                       </div>
                     </div>
-
-                    {form.destinationCountry && form.departureCountry && (
-                      <div
-                        className={cn(
-                          'flex items-center gap-3 rounded-2xl p-4 text-sm font-medium transition-colors',
-                          form.departureCountry === form.destinationCountry
-                            ? 'bg-mint-50/80 text-mint-900 ring-1 ring-mint-300'
-                            : 'bg-sky-50/80 text-sky-900 ring-1 ring-sky-200',
-                        )}
-                      >
-                        <div className="text-2xl">
-                          {form.departureCountry === form.destinationCountry ? '🛡️' : '🌍'}
-                        </div>
-                        <div>
-                          <div className="font-bold flex items-center gap-2">
-                            <span>{form.departureCountry === form.destinationCountry ? 'Domestic trip detected' : 'International trip detected'}</span>
-                            <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', form.departureCountry === form.destinationCountry ? 'bg-mint-200/80 text-mint-800' : 'bg-sky-200/80 text-sky-800')}>
-                              {form.departureCountry === form.destinationCountry ? 'No passport / visa needed' : 'Passport & entry checks required'}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 text-xs opacity-90">
-                            {form.departureCountry === form.destinationCountry
-                              ? 'Travelling within the same country: Checklist will ask for government-issued photo ID (driver’s license, Aadhaar, etc.). Passports and visas are excluded.'
-                              : 'Travelling cross-border: Checklist will include 6-month passport validity checks and official visa entry requirements.'}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
                     <Field id={ids.name} label="Trip name" hint="Shown on your dashboard, e.g. “Sara’s wedding in Dubai”.">
                       <input id={ids.name} value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={60} placeholder="Give your trip a name" className={inputCls} />
                     </Field>
