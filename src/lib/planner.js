@@ -141,13 +141,13 @@ export function resolveStart(location) {
   // Major global & domestic cities typed by name get real coordinates immediately
   const district = !hub && text
     ? WORLD_DESTINATIONS.find((d) => {
-        const cleanName = d.name.toLowerCase().split(',')[0].trim()
-        return (
-          text.includes(cleanName) ||
-          cleanName.includes(text) ||
-          (d.aliases && d.aliases.some((a) => text.includes(a) || a.includes(text)))
-        )
-      })
+      const cleanName = d.name.toLowerCase().split(',')[0].trim()
+      return (
+        text.includes(cleanName) ||
+        cleanName.includes(text) ||
+        (d.aliases && d.aliases.some((a) => text.includes(a) || a.includes(text)))
+      )
+    })
     : null
   if (district) return { label: location.label.trim(), coords: district.coords, hub: null, source: 'manual' }
   return {

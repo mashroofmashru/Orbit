@@ -5,7 +5,6 @@ import { Clock, LoaderCircle, LocateFixed, MapPin, ShieldCheck, X } from 'lucide
 import Chip from '../ui/Chip'
 import Notice from '../ui/Notice'
 import { BUDGET_OPTIONS, BUFFER_OPTIONS, DURATION_OPTIONS, INTERESTS, LIMITS, MOODS } from '../../data/options'
-import { HUBS } from '../../data/adventures'
 import { minutesUntil, resolveStart } from '../../lib/planner'
 import { formatClock, formatMinutes } from '../../lib/format'
 import { describeCurrentLocation, searchLocal } from '../../services/locationService'
@@ -272,17 +271,6 @@ export function LocationField({ compact = false, error }) {
             <Link to="/adventure/discover" className="inline-flex min-h-11 items-center gap-1 font-bold text-sky-600 hover:underline sm:min-h-0">
               Discover places around you →
             </Link>
-            <span className="text-muted">Popular spots:</span>
-            {HUBS.map((h) => (
-              <button
-                key={h.id}
-                type="button"
-                onClick={() => onType(h.name)}
-                className="inline-flex min-h-11 cursor-pointer items-center rounded-full bg-cream-200/70 px-3 py-1 font-medium sm:min-h-8 text-navy transition hover:bg-orange-50 hover:text-orange-700"
-              >
-                {h.city || h.name}
-              </button>
-            ))}
           </div>
           <p className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-muted">
             <ShieldCheck className="mt-px size-4 shrink-0 text-success-700" />
